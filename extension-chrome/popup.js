@@ -72,26 +72,50 @@ async function fetchProductCount(url) {
   return isNaN(count) ? null : count;
 }
 
-async function discoverVendorUrls() {
-  const response = await fetch(MARKETPLACE_URL);
-  const html = await response.text();
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, 'text/html');
+function discoverVendorUrls() {
+  return new Promise((resolve, reject) => {
+    // Ouvrir la page en arrière-plan (inactive)
+    chrome.tabs.create({ url: MARKETPLACE_URL, active: false }, (tab) => {
+      const tabId = tab.id;
 
-  const spans = doc.querySelectorAll('span.qtetooltip.encoded-url[data-url]');
-  const urls = [];
+      function onUpdated(updatedTabId, info) {
+        if (updatedTabId !== tabId || info.status !== 'complete') return;
+        chrome.tabs.onUpdated.removeListener(onUpdated);
 
-  spans.forEach(span => {
-    try {
-      // data-url est en base64, qui contient une chaîne URL-encodée
-      const decoded = decodeURIComponent(atob(span.dataset.url));
-      if (decoded.includes('vendeur=')) {
-        urls.push('https://www.vertbaudet.fr' + decoded);
+        // Attendre que le JS ait rendu les filtres
+        setTimeout(() => {
+          chrome.scripting.executeScript(
+            {
+              target: { tabId },
+              func: () => {
+                const spans = document.querySelectorAll('span.qtetooltip.encoded-url[data-url]');
+                const urls = [];
+                spans.forEach(span => {
+                  try {
+                    const decoded = decodeURIComponent(atob(span.dataset.url));
+                    if (decoded.includes('vendeur=')) {
+                      urls.push('https://www.vertbaudet.fr' + decoded);
+                    }
+                  } catch (e) {}
+                });
+                return [...new Set(urls)];
+              }
+            },
+            (results) => {
+              chrome.tabs.remove(tabId);
+              if (chrome.runtime.lastError || !results || !results[0]) {
+                reject(new Error('Impossible d\'extraire les vendeurs'));
+              } else {
+                resolve(results[0].result);
+              }
+            }
+          );
+        }, 3000); // 3s pour laisser le JS charger les filtres
       }
-    } catch (e) { /* ignorer les entrées invalides */ }
-  });
 
-  return [...new Set(urls)]; // dédoublonner
+      chrome.tabs.onUpdated.addListener(onUpdated);
+    });
+  });
 }
 
 // Init : charger les données stockées
