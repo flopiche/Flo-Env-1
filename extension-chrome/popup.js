@@ -72,25 +72,20 @@ async function fetchProductCount(url) {
   return isNaN(count) ? null : count;
 }
 
-function toSlug(name) {
-  return name
-    .toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '') // enlève les accents
-    .replace(/[^a-z0-9]+/g, '-')  // remplace tout ce qui n'est pas alphanum par un tiret
-    .replace(/^-+|-+$/g, '');     // supprime les tirets en début/fin
-}
-
 async function discoverVendorUrls() {
   const response = await fetch(MARKETPLACE_URL);
   const html = await response.text();
   const doc = new DOMParser().parseFromString(html, 'text/html');
 
   const urls = [];
-  doc.querySelectorAll('li[class*="refinement v_"] span.qtetooltip').forEach(span => {
-    const name = span.textContent.trim();
-    if (!name) return;
-    const slug = toSlug(name);
-    urls.push(`https://www.vertbaudet.fr/shop/marketplace/vendeur=${slug}.htm`);
+  // Sélectionne uniquement les li vendeurs (classe v_...) qui ont un span avec data-url
+  doc.querySelectorAll('li[class*=" v_"] span.encoded-url[data-url]').forEach(span => {
+    try {
+      const decoded = decodeURIComponent(atob(span.dataset.url));
+      if (decoded.includes('vendeur=')) {
+        urls.push('https://www.vertbaudet.fr' + decoded);
+      }
+    } catch (e) {}
   });
 
   return [...new Set(urls)];
