@@ -10,18 +10,33 @@ function getToday() {
   return new Date().toISOString().split('T')[0];
 }
 
-// Retourne la dernière date connue avant aujourd'hui
+// Clé unique par exécution : "2026-06-03T14:32"
+function getNowKey() {
+  return new Date().toISOString().slice(0, 16);
+}
+
+// Retourne l'avant-dernière date connue (toutes dates confondues)
 function getLastKnownDate(dates, today) {
-  return Object.keys(dates)
-    .filter(d => d < today)
-    .sort()
-    .at(-1) ?? null;
+  const sorted = Object.keys(dates).sort();
+  // Si on a une valeur aujourd'hui, on prend l'entrée juste avant
+  // Sinon on prend la dernière connue
+  if (dates[today] !== undefined && sorted.length >= 2) {
+    return sorted.at(-2);
+  }
+  if (dates[today] === undefined && sorted.length >= 1) {
+    return sorted.at(-1);
+  }
+  return null;
 }
 
 function extractVendorName(url) {
   const match = url.match(/vendeur=([^.&/]+)/);
   if (!match) return null;
   return match[1].replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function getLatestKey(dates) {
+  return Object.keys(dates).sort().at(-1) ?? null;
 }
 
 function renderTable(vendors) {
@@ -35,12 +50,18 @@ function renderTable(vendors) {
   }
 
   tbody.innerHTML = rows.map(([vendor, dates]) => {
-    const countToday = dates[today] ?? null;
-    const lastDate = getLastKnownDate(dates, today);
+    // Dernière exécution = la plus récente
+    const latestKey = getLatestKey(dates);
+    const countToday = latestKey ? dates[latestKey] : null;
+    const lastDate = getLastKnownDate(dates, latestKey);
     const countLast = lastDate ? dates[lastDate] : null;
 
     const lastCell = countLast !== null
-      ? `${countLast} <span style="color:#aaa;font-size:11px">(${formatDate(lastDate)})</span>`
+      ? `${countLast} <span style="color:#aaa;font-size:11px">(${lastDate.slice(0,10).split('-').reverse().join('/')} ${lastDate.slice(11,16)})</span>`
+      : '<span style="color:#999">—</span>';
+
+    const todayCell = countToday !== null
+      ? `${countToday} <span style="color:#aaa;font-size:11px">(${latestKey.slice(0,10).split('-').reverse().join('/')} ${latestKey.slice(11,16)})</span>`
       : '<span style="color:#999">—</span>';
 
     let evoBadge = '<span class="badge same">—</span>';
@@ -55,8 +76,7 @@ function renderTable(vendors) {
       <tr>
         <td><strong>${vendor}</strong></td>
         <td>${lastCell}</td>
-        <td>${formatDate(today)}</td>
-        <td>${countToday !== null ? countToday : '<span style="color:#999">—</span>'}</td>
+        <td>${todayCell}</td>
         <td>${evoBadge}</td>
       </tr>`;
   }).join('');
@@ -157,6 +177,7 @@ document.getElementById('btnCount').addEventListener('click', async () => {
     }
 
     const today = getToday();
+    const nowKey = getNowKey();
     btn.textContent = `⏳ 0/${vendorUrls.length}…`;
 
     const results = await batchAll(
@@ -182,7 +203,7 @@ document.getElementById('btnCount').addEventListener('click', async () => {
       if (!vendor) continue;
       if (ok) {
         if (!vendors[vendor]) vendors[vendor] = {};
-        vendors[vendor][today] = count;
+        vendors[vendor][nowKey] = count;
         saved++;
       }
     }
@@ -212,19 +233,21 @@ document.getElementById('btnExport').addEventListener('click', () => {
 
     // Génère un tableau HTML qu'Excel ouvre nativement en XLS
     const tableRows = rows.map(([vendor, dates]) => {
-      const countToday = dates[today] ?? '';
-      const lastDate = getLastKnownDate(dates, today);
-      const countLast = lastDate ? dates[lastDate] : '';
+      const latestKey = getLatestKey(dates);
+      const countLatest = latestKey ? dates[latestKey] : '';
+      const prevKey = getLastKnownDate(dates, latestKey);
+      const countPrev = prevKey ? dates[prevKey] : '';
       let pct = '';
-      if (countToday !== '' && countLast !== '' && countLast !== 0) {
-        pct = ((countToday - countLast) / countLast * 100).toFixed(1);
+      if (countLatest !== '' && countPrev !== '' && countPrev !== 0) {
+        pct = ((countLatest - countPrev) / countPrev * 100).toFixed(1);
       }
+      const fmtKey = k => k ? `${k.slice(0,10).split('-').reverse().join('/')} ${k.slice(11,16)}` : '';
       return `<tr>
         <td>${vendor}</td>
-        <td>${lastDate ? formatDate(lastDate) : ''}</td>
-        <td>${countLast}</td>
-        <td>${formatDate(today)}</td>
-        <td>${countToday}</td>
+        <td>${fmtKey(prevKey)}</td>
+        <td>${countPrev}</td>
+        <td>${fmtKey(latestKey)}</td>
+        <td>${countLatest}</td>
         <td>${pct !== '' ? pct + '%' : ''}</td>
       </tr>`;
     }).join('');
@@ -242,10 +265,10 @@ document.getElementById('btnExport').addEventListener('click', () => {
       <body><table>
         <tr>
           <th>Vendeur</th>
+          <th>Avant-dernière exécution (date)</th>
+          <th>Nb avant-dernière</th>
           <th>Dernière exécution (date)</th>
-          <th>Nb dernière exécution</th>
-          <th>Aujourd'hui (date)</th>
-          <th>Nb aujourd'hui</th>
+          <th>Nb dernière</th>
           <th>Évolution %</th>
         </tr>
         ${tableRows}
