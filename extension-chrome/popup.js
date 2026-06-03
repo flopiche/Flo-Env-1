@@ -30,7 +30,7 @@ function renderTable(vendors) {
 
   const rows = Object.entries(vendors);
   if (rows.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" class="no-data">Aucune donnée — cliquez sur "Compter maintenant".</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" class="no-data">Aucune donnée — cliquez sur "Compter maintenant".</td></tr>';
     return;
   }
 
@@ -38,6 +38,10 @@ function renderTable(vendors) {
     const countToday = dates[today] ?? null;
     const lastDate = getLastKnownDate(dates, today);
     const countLast = lastDate ? dates[lastDate] : null;
+
+    const lastCell = countLast !== null
+      ? `${countLast} <span style="color:#aaa;font-size:11px">(${formatDate(lastDate)})</span>`
+      : '<span style="color:#999">—</span>';
 
     let evoBadge = '<span class="badge same">—</span>';
     if (countToday !== null && countLast !== null && countLast !== 0) {
@@ -50,8 +54,7 @@ function renderTable(vendors) {
     return `
       <tr>
         <td><strong>${vendor}</strong></td>
-        <td>${lastDate ? formatDate(lastDate) : '<span style="color:#999">—</span>'}</td>
-        <td>${countLast !== null ? countLast : '<span style="color:#999">—</span>'}</td>
+        <td>${lastCell}</td>
         <td>${formatDate(today)}</td>
         <td>${countToday !== null ? countToday : '<span style="color:#999">—</span>'}</td>
         <td>${evoBadge}</td>
