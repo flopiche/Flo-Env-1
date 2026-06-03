@@ -1,4 +1,4 @@
-const MARKETPLACE_URL = 'https://www.vertbaudet.fr/shop/marketplace/';
+const MARKETPLACE_URL = 'https://www.vertbaudet.fr/shop/marketplace.htm';
 
 function formatDate(dateStr) {
   const [y, m, d] = dateStr.split('-');
@@ -72,42 +72,22 @@ async function fetchProductCount(url) {
   return isNaN(count) ? null : count;
 }
 
-function discoverVendorUrls() {
-  return new Promise((resolve, reject) => {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      const tab = tabs[0];
-      if (!tab || !tab.url || !tab.url.includes('vertbaudet.fr')) {
-        reject(new Error('Ouvrez la page marketplace Vertbaudet d\'abord.'));
-        return;
-      }
+async function discoverVendorUrls() {
+  const response = await fetch(MARKETPLACE_URL);
+  const html = await response.text();
+  const doc = new DOMParser().parseFromString(html, 'text/html');
 
-      chrome.scripting.executeScript(
-        {
-          target: { tabId: tab.id },
-          func: () => {
-            const spans = document.querySelectorAll('span.qtetooltip.encoded-url[data-url]');
-            const urls = [];
-            spans.forEach(span => {
-              try {
-                const decoded = decodeURIComponent(atob(span.dataset.url));
-                if (decoded.includes('vendeur=')) {
-                  urls.push('https://www.vertbaudet.fr' + decoded);
-                }
-              } catch (e) {}
-            });
-            return [...new Set(urls)];
-          }
-        },
-        (results) => {
-          if (chrome.runtime.lastError || !results || !results[0]) {
-            reject(new Error('Impossible de lire la page.'));
-          } else {
-            resolve(results[0].result);
-          }
-        }
-      );
-    });
+  const urls = [];
+  doc.querySelectorAll('span.qtetooltip.encoded-url[data-url]').forEach(span => {
+    try {
+      const decoded = decodeURIComponent(atob(span.dataset.url));
+      if (decoded.includes('vendeur=')) {
+        urls.push('https://www.vertbaudet.fr' + decoded);
+      }
+    } catch (e) {}
   });
+
+  return [...new Set(urls)];
 }
 
 // Init : charger les données stockées

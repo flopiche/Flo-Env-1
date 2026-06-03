@@ -3,7 +3,7 @@
   "name": "Compteur Produits Vendeurs",
   "version": "1.1",
   "description": "Compte les produits par vendeur et suit l'évolution quotidienne",
-  "permissions": ["storage", "tabs", "scripting"],
+  "permissions": ["storage"],
   "host_permissions": ["https://www.vertbaudet.fr/*"],
   "action": {
     "default_popup": "popup.html",
