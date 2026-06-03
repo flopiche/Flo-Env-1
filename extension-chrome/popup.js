@@ -46,7 +46,7 @@ function renderTable(vendors) {
 
   const rows = Object.entries(vendors);
   if (rows.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" class="no-data">Aucune donnée — cliquez sur "Compter maintenant".</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" class="no-data">Aucune donnée — cliquez sur "Compter maintenant".</td></tr>';
     return;
   }
 
@@ -277,12 +277,11 @@ document.getElementById('btnExport').addEventListener('click', () => {
 
     const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
     const dateStr = today.replace(/-/g, '');
-    a.href = url;
-    a.download = `vendeurs_${dateStr}.xls`;
-    a.click();
-    URL.revokeObjectURL(url);
+    chrome.downloads.download(
+      { url, filename: `vendeurs_${dateStr}.xls`, saveAs: false },
+      () => { URL.revokeObjectURL(url); }
+    );
     document.getElementById('status').textContent = `✅ Export téléchargé (${rows.length} vendeurs).`;
   });
 });
