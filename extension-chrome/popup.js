@@ -10,10 +10,10 @@ function getToday() {
   return new Date().toISOString().split('T')[0];
 }
 
-// Clé unique par exécution en GMT+2 : "2026-06-03T14:32"
+// Clé unique par exécution en GMT+2 : "2026-06-03T14:32:45"
 function getNowKey() {
   const now = new Date(Date.now() + 2 * 60 * 60 * 1000);
-  return now.toISOString().slice(0, 16);
+  return now.toISOString().slice(0, 19);
 }
 
 // Retourne l'avant-dernière date connue (toutes dates confondues)
