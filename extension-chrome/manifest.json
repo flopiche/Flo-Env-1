@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "Compteur Produits Vendeurs",
-  "version": "1.0",
+  "version": "1.1",
   "description": "Compte les produits par vendeur et suit l'évolution quotidienne",
-  "permissions": ["storage", "activeTab", "scripting", "tabs"],
+  "permissions": ["storage"],
   "host_permissions": ["https://www.vertbaudet.fr/*"],
   "action": {
     "default_popup": "popup.html",
@@ -12,11 +12,5 @@
       "48": "icon.png",
       "128": "icon.png"
     }
-  },
-  "content_scripts": [
-    {
-      "matches": ["https://www.vertbaudet.fr/shop/marketplace/*"],
-      "js": ["content.js"]
-    }
-  ]
+  }
 }

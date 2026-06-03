@@ -13,6 +13,12 @@ function getToday() {
   return new Date().toISOString().split('T')[0];
 }
 
+function extractVendorName(url) {
+  const match = url.match(/vendeur=([^.&/]+)/);
+  if (!match) return null;
+  return match[1].replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 function renderTable(vendors) {
   const tbody = document.getElementById('tableBody');
   const today = getToday();
@@ -20,7 +26,7 @@ function renderTable(vendors) {
 
   const rows = Object.entries(vendors);
   if (rows.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" class="no-data">Aucune donnée — visitez une page vendeur.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="no-data">Aucune donnée — cliquez sur "Compter maintenant".</td></tr>';
     return;
   }
 
@@ -48,68 +54,66 @@ function renderTable(vendors) {
   }).join('');
 }
 
+async function fetchProductCount(url) {
+  const response = await fetch(url);
+  const html = await response.text();
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+  const strong = doc.querySelector('span.productcount strong');
+  if (!strong) return null;
+  const count = parseInt(strong.textContent.trim(), 10);
+  return isNaN(count) ? null : count;
+}
+
 chrome.storage.local.get(['vendors'], (result) => {
   renderTable(result.vendors || {});
 });
 
-document.getElementById('btnCount').addEventListener('click', () => {
+document.getElementById('btnCount').addEventListener('click', async () => {
   const btn = document.getElementById('btnCount');
   const status = document.getElementById('status');
   btn.disabled = true;
-  btn.textContent = '⏳ Comptage…';
   status.textContent = '';
 
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    const tab = tabs[0];
-    if (!tab || !tab.url || !tab.url.includes('vertbaudet.fr/shop/marketplace')) {
-      status.textContent = '⚠️ Ouvrez une page vendeur Vertbaudet d\'abord.';
+  const today = getToday();
+  const results = [];
+
+  for (let i = 0; i < VENDOR_URLS.length; i++) {
+    const url = VENDOR_URLS[i];
+    const vendor = extractVendorName(url);
+    if (!vendor) continue;
+
+    btn.textContent = `⏳ ${i + 1}/${VENDOR_URLS.length} — ${vendor}…`;
+
+    try {
+      const count = await fetchProductCount(url);
+      results.push({ vendor, count, ok: count !== null });
+    } catch (e) {
+      results.push({ vendor, count: null, ok: false });
+    }
+  }
+
+  chrome.storage.local.get(['vendors'], (stored) => {
+    const vendors = stored.vendors || {};
+    let saved = 0;
+    for (const { vendor, count, ok } of results) {
+      if (ok) {
+        if (!vendors[vendor]) vendors[vendor] = {};
+        vendors[vendor][today] = count;
+        saved++;
+      }
+    }
+    chrome.storage.local.set({ vendors }, () => {
+      renderTable(vendors);
+      const errors = results.filter(r => !r.ok).map(r => r.vendor);
+      if (errors.length > 0) {
+        status.textContent = `✅ ${saved} vendeur(s) enregistrés. ❌ Erreur : ${errors.join(', ')}`;
+      } else {
+        status.textContent = `✅ ${saved} vendeur(s) mis à jour avec succès.`;
+      }
       btn.disabled = false;
       btn.textContent = '▶ Compter maintenant';
-      return;
-    }
-
-    chrome.scripting.executeScript(
-      {
-        target: { tabId: tab.id },
-        func: () => {
-          const vendorMatch = window.location.href.match(/vendeur=([^.&]+)/);
-          const strongEl = document.querySelector('span.productcount strong');
-          return {
-            vendor: vendorMatch ? vendorMatch[1].replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : null,
-            count: strongEl ? parseInt(strongEl.textContent.trim(), 10) : null
-          };
-        }
-      },
-      (results) => {
-        if (chrome.runtime.lastError || !results || !results[0]) {
-          status.textContent = '❌ Impossible de lire la page.';
-          btn.disabled = false;
-          btn.textContent = '▶ Compter maintenant';
-          return;
-        }
-
-        const { vendor, count } = results[0].result;
-        if (!vendor || count === null || isNaN(count)) {
-          status.textContent = '❌ Aucun compteur trouvé sur cette page.';
-          btn.disabled = false;
-          btn.textContent = '▶ Compter maintenant';
-          return;
-        }
-
-        const today = new Date().toISOString().split('T')[0];
-        chrome.storage.local.get(['vendors'], (result) => {
-          const vendors = result.vendors || {};
-          if (!vendors[vendor]) vendors[vendor] = {};
-          vendors[vendor][today] = count;
-          chrome.storage.local.set({ vendors }, () => {
-            renderTable(vendors);
-            status.textContent = `✅ ${vendor} — ${count} produits enregistrés.`;
-            btn.disabled = false;
-            btn.textContent = '▶ Compter maintenant';
-          });
-        });
-      }
-    );
+    });
   });
 });
 
