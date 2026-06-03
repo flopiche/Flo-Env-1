@@ -91,27 +91,27 @@ function updateVendorCountLabel(urls) {
 async function fetchProductCount(url) {
   const response = await fetch(url);
   const html = await response.text();
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  const strong = doc.querySelector('span.productcount strong');
-  if (!strong) return null;
-  const count = parseInt(strong.textContent.trim(), 10);
+  const match = html.match(/class="productcount"[^>]*>\s*<strong>\s*(\d+)\s*<\/strong>/);
+  if (!match) return null;
+  const count = parseInt(match[1], 10);
   return isNaN(count) ? null : count;
 }
 
 async function discoverVendorUrls() {
   const response = await fetch(MARKETPLACE_URL);
   const html = await response.text();
-  const doc = new DOMParser().parseFromString(html, 'text/html');
 
   const urls = [];
-  doc.querySelectorAll('li[class*=" v_"] span.encoded-url[data-url]').forEach(span => {
+  const re = /class="refinement v_[^"]*"[^>]*>.*?data-url="([^"]+)"/gs;
+  let m;
+  while ((m = re.exec(html)) !== null) {
     try {
-      const decoded = decodeURIComponent(atob(span.dataset.url));
+      const decoded = decodeURIComponent(atob(m[1]));
       if (decoded.includes('vendeur=')) {
         urls.push('https://www.vertbaudet.fr' + decoded);
       }
     } catch (e) {}
-  });
+  }
 
   return [...new Set(urls)];
 }
