@@ -1,18 +1,21 @@
 const MARKETPLACE_URL = 'https://www.vertbaudet.fr/shop/marketplace.htm';
+const BATCH_SIZE = 10; // requêtes simultanées
 
 function formatDate(dateStr) {
   const [y, m, d] = dateStr.split('-');
   return `${d}/${m}/${y}`;
 }
 
-function getYesterday() {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  return d.toISOString().split('T')[0];
-}
-
 function getToday() {
   return new Date().toISOString().split('T')[0];
+}
+
+// Retourne la dernière date connue avant aujourd'hui
+function getLastKnownDate(dates, today) {
+  return Object.keys(dates)
+    .filter(d => d < today)
+    .sort()
+    .at(-1) ?? null;
 }
 
 function extractVendorName(url) {
@@ -24,7 +27,6 @@ function extractVendorName(url) {
 function renderTable(vendors) {
   const tbody = document.getElementById('tableBody');
   const today = getToday();
-  const yesterday = getYesterday();
 
   const rows = Object.entries(vendors);
   if (rows.length === 0) {
@@ -34,11 +36,12 @@ function renderTable(vendors) {
 
   tbody.innerHTML = rows.map(([vendor, dates]) => {
     const countToday = dates[today] ?? null;
-    const countYesterday = dates[yesterday] ?? null;
+    const lastDate = getLastKnownDate(dates, today);
+    const countLast = lastDate ? dates[lastDate] : null;
 
     let evoBadge = '<span class="badge same">—</span>';
-    if (countToday !== null && countYesterday !== null && countYesterday !== 0) {
-      const pct = ((countToday - countYesterday) / countYesterday * 100).toFixed(1);
+    if (countToday !== null && countLast !== null && countLast !== 0) {
+      const pct = ((countToday - countLast) / countLast * 100).toFixed(1);
       const sign = pct > 0 ? '+' : '';
       const cls = pct > 0 ? 'up' : pct < 0 ? 'down' : 'same';
       evoBadge = `<span class="badge ${cls}">${sign}${pct}%</span>`;
@@ -47,8 +50,8 @@ function renderTable(vendors) {
     return `
       <tr>
         <td><strong>${vendor}</strong></td>
-        <td>${formatDate(yesterday)}</td>
-        <td>${countYesterday !== null ? countYesterday : '<span style="color:#999">—</span>'}</td>
+        <td>${lastDate ? formatDate(lastDate) : '<span style="color:#999">—</span>'}</td>
+        <td>${countLast !== null ? countLast : '<span style="color:#999">—</span>'}</td>
         <td>${formatDate(today)}</td>
         <td>${countToday !== null ? countToday : '<span style="color:#999">—</span>'}</td>
         <td>${evoBadge}</td>
@@ -64,8 +67,7 @@ function updateVendorCountLabel(urls) {
 async function fetchProductCount(url) {
   const response = await fetch(url);
   const html = await response.text();
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, 'text/html');
+  const doc = new DOMParser().parseFromString(html, 'text/html');
   const strong = doc.querySelector('span.productcount strong');
   if (!strong) return null;
   const count = parseInt(strong.textContent.trim(), 10);
@@ -78,7 +80,6 @@ async function discoverVendorUrls() {
   const doc = new DOMParser().parseFromString(html, 'text/html');
 
   const urls = [];
-  // Sélectionne uniquement les li vendeurs (classe v_...) qui ont un span avec data-url
   doc.querySelectorAll('li[class*=" v_"] span.encoded-url[data-url]').forEach(span => {
     try {
       const decoded = decodeURIComponent(atob(span.dataset.url));
@@ -91,13 +92,25 @@ async function discoverVendorUrls() {
   return [...new Set(urls)];
 }
 
-// Init : charger les données stockées
+// Exécute les promesses par batch de taille N
+async function batchAll(items, batchSize, asyncFn, onProgress) {
+  const results = [];
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize);
+    const batchResults = await Promise.all(batch.map(asyncFn));
+    results.push(...batchResults);
+    if (onProgress) onProgress(results.length, items.length);
+  }
+  return results;
+}
+
+// Init
 chrome.storage.local.get(['vendors', 'vendorUrls'], (result) => {
   renderTable(result.vendors || {});
   updateVendorCountLabel(result.vendorUrls || []);
 });
 
-// Découvrir les vendeurs automatiquement
+// Découvrir les vendeurs
 document.getElementById('btnDiscover').addEventListener('click', async () => {
   const btn = document.getElementById('btnDiscover');
   const status = document.getElementById('status');
@@ -123,7 +136,7 @@ document.getElementById('btnDiscover').addEventListener('click', async () => {
   btn.textContent = '🔍 Découvrir les vendeurs';
 });
 
-// Compter les produits pour tous les vendeurs
+// Compter les produits — requêtes parallèles par batch
 document.getElementById('btnCount').addEventListener('click', async () => {
   const btn = document.getElementById('btnCount');
   const status = document.getElementById('status');
@@ -131,7 +144,7 @@ document.getElementById('btnCount').addEventListener('click', async () => {
   status.textContent = '';
 
   chrome.storage.local.get(['vendors', 'vendorUrls'], async (stored) => {
-    const vendorUrls = stored.vendorUrls || VENDOR_URLS || [];
+    const vendorUrls = stored.vendorUrls || [];
 
     if (vendorUrls.length === 0) {
       status.textContent = '⚠️ Aucune URL — cliquez d\'abord sur "Découvrir les vendeurs".';
@@ -141,26 +154,29 @@ document.getElementById('btnCount').addEventListener('click', async () => {
     }
 
     const today = getToday();
-    const results = [];
+    btn.textContent = `⏳ 0/${vendorUrls.length}…`;
 
-    for (let i = 0; i < vendorUrls.length; i++) {
-      const url = vendorUrls[i];
-      const vendor = extractVendorName(url);
-      if (!vendor) continue;
-
-      btn.textContent = `⏳ ${i + 1}/${vendorUrls.length} — ${vendor}…`;
-
-      try {
-        const count = await fetchProductCount(url);
-        results.push({ vendor, count, ok: count !== null });
-      } catch (e) {
-        results.push({ vendor, count: null, ok: false });
+    const results = await batchAll(
+      vendorUrls,
+      BATCH_SIZE,
+      async (url) => {
+        const vendor = extractVendorName(url);
+        try {
+          const count = await fetchProductCount(url);
+          return { vendor, count, ok: count !== null };
+        } catch (e) {
+          return { vendor, count: null, ok: false };
+        }
+      },
+      (done, total) => {
+        btn.textContent = `⏳ ${done}/${total}…`;
       }
-    }
+    );
 
     const vendors = stored.vendors || {};
     let saved = 0;
     for (const { vendor, count, ok } of results) {
+      if (!vendor) continue;
       if (ok) {
         if (!vendors[vendor]) vendors[vendor] = {};
         vendors[vendor][today] = count;
@@ -170,12 +186,10 @@ document.getElementById('btnCount').addEventListener('click', async () => {
 
     chrome.storage.local.set({ vendors }, () => {
       renderTable(vendors);
-      const errors = results.filter(r => !r.ok).map(r => r.vendor);
-      if (errors.length > 0) {
-        status.textContent = `✅ ${saved} enregistrés. ❌ Erreurs : ${errors.join(', ')}`;
-      } else {
-        status.textContent = `✅ ${saved} vendeur(s) mis à jour.`;
-      }
+      const errors = results.filter(r => !r.ok && r.vendor).map(r => r.vendor);
+      status.textContent = errors.length > 0
+        ? `✅ ${saved} enregistrés. ❌ Erreurs (${errors.length}) : ${errors.slice(0, 3).join(', ')}${errors.length > 3 ? '…' : ''}`
+        : `✅ ${saved} vendeur(s) mis à jour.`;
       btn.disabled = false;
       btn.textContent = '▶ Compter maintenant';
     });
