@@ -199,6 +199,70 @@ document.getElementById('btnCount').addEventListener('click', async () => {
   });
 });
 
+document.getElementById('btnExport').addEventListener('click', () => {
+  chrome.storage.local.get(['vendors'], (stored) => {
+    const vendors = stored.vendors || {};
+    const today = getToday();
+    const rows = Object.entries(vendors);
+
+    if (rows.length === 0) {
+      document.getElementById('status').textContent = '⚠️ Aucune donnée à exporter.';
+      return;
+    }
+
+    // Génère un tableau HTML qu'Excel ouvre nativement en XLS
+    const tableRows = rows.map(([vendor, dates]) => {
+      const countToday = dates[today] ?? '';
+      const lastDate = getLastKnownDate(dates, today);
+      const countLast = lastDate ? dates[lastDate] : '';
+      let pct = '';
+      if (countToday !== '' && countLast !== '' && countLast !== 0) {
+        pct = ((countToday - countLast) / countLast * 100).toFixed(1);
+      }
+      return `<tr>
+        <td>${vendor}</td>
+        <td>${lastDate ? formatDate(lastDate) : ''}</td>
+        <td>${countLast}</td>
+        <td>${formatDate(today)}</td>
+        <td>${countToday}</td>
+        <td>${pct !== '' ? pct + '%' : ''}</td>
+      </tr>`;
+    }).join('');
+
+    const html = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office"
+            xmlns:x="urn:schemas-microsoft-com:office:excel"
+            xmlns="http://www.w3.org/TR/REC-html40">
+      <head><meta charset="UTF-8">
+        <!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets>
+          <x:ExcelWorksheet><x:Name>Vendeurs</x:Name>
+          <x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
+          </x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
+      </head>
+      <body><table>
+        <tr>
+          <th>Vendeur</th>
+          <th>Dernière exécution (date)</th>
+          <th>Nb dernière exécution</th>
+          <th>Aujourd'hui (date)</th>
+          <th>Nb aujourd'hui</th>
+          <th>Évolution %</th>
+        </tr>
+        ${tableRows}
+      </table></body></html>`;
+
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const dateStr = today.replace(/-/g, '');
+    a.href = url;
+    a.download = `vendeurs_${dateStr}.xls`;
+    a.click();
+    URL.revokeObjectURL(url);
+    document.getElementById('status').textContent = `✅ Export téléchargé (${rows.length} vendeurs).`;
+  });
+});
+
 document.getElementById('btnClear').addEventListener('click', () => {
   if (confirm('Effacer toutes les données ?')) {
     chrome.storage.local.remove('vendors', () => renderTable({}));

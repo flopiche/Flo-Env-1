@@ -87,6 +87,18 @@
     }
     .btn-discover:hover { background: #0056b3; }
     .btn-discover:disabled { background: #7ab8f5; cursor: default; }
+    .btn-export {
+      padding: 5px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      background: #6f42c1;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      margin-top: 10px;
+      margin-right: 6px;
+    }
+    .btn-export:hover { background: #5a32a3; }
     #vendorCount { font-size: 11px; color: #888; margin-top: 4px; }
     #status { font-size: 12px; color: #555; margin-top: 8px; min-height: 16px; }
   </style>
@@ -109,6 +121,7 @@
   </table>
   <button class="btn-discover" id="btnDiscover">🔍 Découvrir les vendeurs</button>
   <button class="btn-count" id="btnCount">▶ Compter maintenant</button>
+  <button class="btn-export" id="btnExport">⬇ Extraire XLS</button>
   <button class="btn-clear" id="btnClear">Effacer les données</button>
   <div id="vendorCount"></div>
   <div id="status"></div>
