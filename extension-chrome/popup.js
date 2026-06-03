@@ -74,46 +74,38 @@ async function fetchProductCount(url) {
 
 function discoverVendorUrls() {
   return new Promise((resolve, reject) => {
-    // Ouvrir la page en arrière-plan (inactive)
-    chrome.tabs.create({ url: MARKETPLACE_URL, active: false }, (tab) => {
-      const tabId = tab.id;
-
-      function onUpdated(updatedTabId, info) {
-        if (updatedTabId !== tabId || info.status !== 'complete') return;
-        chrome.tabs.onUpdated.removeListener(onUpdated);
-
-        // Attendre que le JS ait rendu les filtres
-        setTimeout(() => {
-          chrome.scripting.executeScript(
-            {
-              target: { tabId },
-              func: () => {
-                const spans = document.querySelectorAll('span.qtetooltip.encoded-url[data-url]');
-                const urls = [];
-                spans.forEach(span => {
-                  try {
-                    const decoded = decodeURIComponent(atob(span.dataset.url));
-                    if (decoded.includes('vendeur=')) {
-                      urls.push('https://www.vertbaudet.fr' + decoded);
-                    }
-                  } catch (e) {}
-                });
-                return [...new Set(urls)];
-              }
-            },
-            (results) => {
-              chrome.tabs.remove(tabId);
-              if (chrome.runtime.lastError || !results || !results[0]) {
-                reject(new Error('Impossible d\'extraire les vendeurs'));
-              } else {
-                resolve(results[0].result);
-              }
-            }
-          );
-        }, 3000); // 3s pour laisser le JS charger les filtres
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const tab = tabs[0];
+      if (!tab || !tab.url || !tab.url.includes('vertbaudet.fr')) {
+        reject(new Error('Ouvrez la page marketplace Vertbaudet d\'abord.'));
+        return;
       }
 
-      chrome.tabs.onUpdated.addListener(onUpdated);
+      chrome.scripting.executeScript(
+        {
+          target: { tabId: tab.id },
+          func: () => {
+            const spans = document.querySelectorAll('span.qtetooltip.encoded-url[data-url]');
+            const urls = [];
+            spans.forEach(span => {
+              try {
+                const decoded = decodeURIComponent(atob(span.dataset.url));
+                if (decoded.includes('vendeur=')) {
+                  urls.push('https://www.vertbaudet.fr' + decoded);
+                }
+              } catch (e) {}
+            });
+            return [...new Set(urls)];
+          }
+        },
+        (results) => {
+          if (chrome.runtime.lastError || !results || !results[0]) {
+            reject(new Error('Impossible de lire la page.'));
+          } else {
+            resolve(results[0].result);
+          }
+        }
+      );
     });
   });
 }
@@ -143,7 +135,7 @@ document.getElementById('btnDiscover').addEventListener('click', async () => {
       });
     }
   } catch (e) {
-    status.textContent = '❌ Erreur lors de la récupération de la page marketplace.';
+    status.textContent = `❌ ${e.message}`;
   }
 
   btn.disabled = false;
