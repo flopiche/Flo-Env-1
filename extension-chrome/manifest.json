@@ -3,7 +3,10 @@
   "name": "El Carlitator",
   "version": "1.2",
   "description": "Compte les produits par vendeur et suit l'évolution quotidienne",
-  "permissions": ["storage", "downloads"],
+  "permissions": ["storage", "downloads", "notifications", "alarms"],
+  "background": {
+    "service_worker": "background.js"
+  },
   "host_permissions": ["https://www.vertbaudet.fr/*"],
   "action": {
     "default_popup": "popup.html",
