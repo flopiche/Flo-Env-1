@@ -1,3 +1,5 @@
+const MARKETPLACE_URL = 'https://www.vertbaudet.fr/shop/marketplace/';
+
 function formatDate(dateStr) {
   const [y, m, d] = dateStr.split('-');
   return `${d}/${m}/${y}`;
@@ -54,6 +56,11 @@ function renderTable(vendors) {
   }).join('');
 }
 
+function updateVendorCountLabel(urls) {
+  document.getElementById('vendorCount').textContent =
+    urls.length > 0 ? `${urls.length} vendeur(s) dans la liste` : '';
+}
+
 async function fetchProductCount(url) {
   const response = await fetch(url);
   const html = await response.text();
@@ -65,35 +72,95 @@ async function fetchProductCount(url) {
   return isNaN(count) ? null : count;
 }
 
-chrome.storage.local.get(['vendors'], (result) => {
+async function discoverVendorUrls() {
+  const response = await fetch(MARKETPLACE_URL);
+  const html = await response.text();
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+
+  const spans = doc.querySelectorAll('span.qtetooltip.encoded-url[data-url]');
+  const urls = [];
+
+  spans.forEach(span => {
+    try {
+      // data-url est en base64, qui contient une chaîne URL-encodée
+      const decoded = decodeURIComponent(atob(span.dataset.url));
+      if (decoded.includes('vendeur=')) {
+        urls.push('https://www.vertbaudet.fr' + decoded);
+      }
+    } catch (e) { /* ignorer les entrées invalides */ }
+  });
+
+  return [...new Set(urls)]; // dédoublonner
+}
+
+// Init : charger les données stockées
+chrome.storage.local.get(['vendors', 'vendorUrls'], (result) => {
   renderTable(result.vendors || {});
+  updateVendorCountLabel(result.vendorUrls || []);
 });
 
+// Découvrir les vendeurs automatiquement
+document.getElementById('btnDiscover').addEventListener('click', async () => {
+  const btn = document.getElementById('btnDiscover');
+  const status = document.getElementById('status');
+  btn.disabled = true;
+  btn.textContent = '⏳ Recherche…';
+  status.textContent = '';
+
+  try {
+    const urls = await discoverVendorUrls();
+    if (urls.length === 0) {
+      status.textContent = '❌ Aucun vendeur trouvé sur la page marketplace.';
+    } else {
+      chrome.storage.local.set({ vendorUrls: urls }, () => {
+        updateVendorCountLabel(urls);
+        status.textContent = `✅ ${urls.length} vendeur(s) découvert(s) et enregistrés.`;
+      });
+    }
+  } catch (e) {
+    status.textContent = '❌ Erreur lors de la récupération de la page marketplace.';
+  }
+
+  btn.disabled = false;
+  btn.textContent = '🔍 Découvrir les vendeurs';
+});
+
+// Compter les produits pour tous les vendeurs
 document.getElementById('btnCount').addEventListener('click', async () => {
   const btn = document.getElementById('btnCount');
   const status = document.getElementById('status');
   btn.disabled = true;
   status.textContent = '';
 
-  const today = getToday();
-  const results = [];
+  chrome.storage.local.get(['vendors', 'vendorUrls'], async (stored) => {
+    const vendorUrls = stored.vendorUrls || VENDOR_URLS || [];
 
-  for (let i = 0; i < VENDOR_URLS.length; i++) {
-    const url = VENDOR_URLS[i];
-    const vendor = extractVendorName(url);
-    if (!vendor) continue;
-
-    btn.textContent = `⏳ ${i + 1}/${VENDOR_URLS.length} — ${vendor}…`;
-
-    try {
-      const count = await fetchProductCount(url);
-      results.push({ vendor, count, ok: count !== null });
-    } catch (e) {
-      results.push({ vendor, count: null, ok: false });
+    if (vendorUrls.length === 0) {
+      status.textContent = '⚠️ Aucune URL — cliquez d\'abord sur "Découvrir les vendeurs".';
+      btn.disabled = false;
+      btn.textContent = '▶ Compter maintenant';
+      return;
     }
-  }
 
-  chrome.storage.local.get(['vendors'], (stored) => {
+    const today = getToday();
+    const results = [];
+
+    for (let i = 0; i < vendorUrls.length; i++) {
+      const url = vendorUrls[i];
+      const vendor = extractVendorName(url);
+      if (!vendor) continue;
+
+      btn.textContent = `⏳ ${i + 1}/${vendorUrls.length} — ${vendor}…`;
+
+      try {
+        const count = await fetchProductCount(url);
+        results.push({ vendor, count, ok: count !== null });
+      } catch (e) {
+        results.push({ vendor, count: null, ok: false });
+      }
+    }
+
     const vendors = stored.vendors || {};
     let saved = 0;
     for (const { vendor, count, ok } of results) {
@@ -103,13 +170,14 @@ document.getElementById('btnCount').addEventListener('click', async () => {
         saved++;
       }
     }
+
     chrome.storage.local.set({ vendors }, () => {
       renderTable(vendors);
       const errors = results.filter(r => !r.ok).map(r => r.vendor);
       if (errors.length > 0) {
-        status.textContent = `✅ ${saved} vendeur(s) enregistrés. ❌ Erreur : ${errors.join(', ')}`;
+        status.textContent = `✅ ${saved} enregistrés. ❌ Erreurs : ${errors.join(', ')}`;
       } else {
-        status.textContent = `✅ ${saved} vendeur(s) mis à jour avec succès.`;
+        status.textContent = `✅ ${saved} vendeur(s) mis à jour.`;
       }
       btn.disabled = false;
       btn.textContent = '▶ Compter maintenant';
