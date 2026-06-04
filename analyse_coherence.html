@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Analyse Cohérence Produits</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f6fa; color: #2d3436; }
+.container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 4px; }
+.subtitle { color: #636e72; font-size: 0.875rem; margin-bottom: 24px; }
+
+.card { background: white; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.card h2 { font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: #b2bec3; margin-bottom: 12px; }
+
+label { display: block; font-size: 0.875rem; font-weight: 500; margin-bottom: 6px; }
+input[type=password], input[type=file] {
+  width: 100%; padding: 10px 12px; border: 1.5px solid #dfe6e9; border-radius: 8px;
+  font-size: 0.875rem; outline: none; transition: border-color .2s; background: white;
+}
+input[type=password]:focus { border-color: #6c5ce7; }
+.key-note { font-size: 0.72rem; color: #b2bec3; margin-top: 4px; }
+.field { margin-bottom: 14px; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 22px; border-radius: 8px; font-size: 0.875rem; font-weight: 600;
+  cursor: pointer; border: none; transition: all .2s;
+}
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn-primary { background: #6c5ce7; color: white; }
+.btn-primary:hover:not(:disabled) { background: #5a4bd1; }
+.btn-success { background: #00b894; color: white; }
+.btn-success:hover:not(:disabled) { background: #00a381; }
+
+.progress-wrap { display: none; margin-top: 16px; }
+.progress-label { font-size: 0.8rem; color: #636e72; margin-bottom: 6px; }
+.progress-bg { background: #f0f0f0; border-radius: 99px; height: 8px; overflow: hidden; }
+.progress-bar { height: 100%; background: linear-gradient(90deg,#6c5ce7,#a29bfe); border-radius: 99px; transition: width .4s; width: 0%; }
+#log { font-size: 0.72rem; color: #b2bec3; margin-top: 6px; min-height: 16px; }
+
+.results { display: none; }
+.results-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.results-header h2 { font-size: 1rem; font-weight: 700; color: #2d3436; text-transform: none; letter-spacing: 0; }
+
+table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+th { background: #f8f9fa; padding: 10px 12px; text-align: left; font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: .04em; color: #636e72; border-bottom: 1.5px solid #eee; white-space: nowrap; }
+td { padding: 10px 12px; border-bottom: 1px solid #f5f5f5; vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #fafbfc; }
+
+.badge {
+  display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 0.7rem; font-weight: 700; white-space: nowrap;
+}
+.badge-coherent     { background: #d4edda; color: #155724; }
+.badge-contradiction { background: #f8d7da; color: #721c24; }
+.badge-nv           { background: #e2e3e5; color: #555; }
+
+.remark { font-size: 0.7rem; color: #636e72; margin-top: 3px; font-style: italic; line-height: 1.4; }
+.ean-title { font-size: 0.7rem; color: #b2bec3; margin-top: 2px; }
+.error-cell { color: #c0392b; font-size: 0.75rem; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🔍 Analyse Cohérence Produits</h1>
+  <p class="subtitle">Vérifie la cohérence entre les fiches produit et leurs visuels — propulsé par Claude</p>
+
+  <div class="card">
+    <h2>Configuration</h2>
+    <div class="field">
+      <label for="apiKey">Clé API Anthropic</label>
+      <input type="password" id="apiKey" placeholder="sk-ant-api03-..." autocomplete="off">
+      <p class="key-note">🔒 Votre clé reste uniquement en mémoire de cette page et n'est envoyée qu'à api.anthropic.com</p>
+    </div>
+    <div class="field" style="margin-bottom:0">
+      <label for="fileInput">Fichier Excel export produits (onglet "Data")</label>
+      <input type="file" id="fileInput" accept=".xlsx,.xls">
+    </div>
+  </div>
+
+  <div class="card">
+    <button class="btn btn-primary" id="startBtn" onclick="startAnalysis()">▶ Lancer l'analyse</button>
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-label" id="progressLabel">Initialisation...</div>
+      <div class="progress-bg"><div class="progress-bar" id="progressBar"></div></div>
+      <div id="log"></div>
+    </div>
+  </div>
+
+  <div class="results card" id="resultsSection">
+    <div class="results-header">
+      <h2 id="resultsTitle">Résultats</h2>
+      <button class="btn btn-success" onclick="downloadExcel()">⬇ Télécharger Excel</button>
+    </div>
+    <div style="overflow-x:auto">
+      <table id="resultsTable">
+        <thead>
+          <tr>
+            <th>EAN</th>
+            <th>Verdict global</th>
+            <th>Type produit</th>
+            <th>Public / Âge</th>
+            <th>Couleur</th>
+            <th>Lot</th>
+            <th>Texte / Logo</th>
+            <th>Remarques</th>
+          </tr>
+        </thead>
+        <tbody id="resultsBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+let allResults = [];
+
+// ── Colonne finder ──────────────────────────────────────────────────────────
+function findCol(headers, terms) {
+  for (const t of terms) {
+    const i = headers.findIndex(h => h && h.toString().toLowerCase().includes(t.toLowerCase()));
+    if (i !== -1) return i;
+  }
+  return -1;
+}
+
+// ── Main ────────────────────────────────────────────────────────────────────
+async function startAnalysis() {
+  const apiKey = document.getElementById('apiKey').value.trim();
+  const file   = document.getElementById('fileInput').files[0];
+  if (!apiKey)  { alert('Veuillez saisir votre clé API Anthropic.'); return; }
+  if (!file)    { alert('Veuillez sélectionner un fichier Excel.'); return; }
+
+  document.getElementById('startBtn').disabled = true;
+  document.getElementById('progressWrap').style.display = 'block';
+  document.getElementById('resultsSection').style.display = 'none';
+  document.getElementById('resultsBody').innerHTML = '';
+  allResults = [];
+
+  // Read file
+  log('Lecture du fichier Excel...');
+  const buf  = await file.arrayBuffer();
+  const wb   = XLSX.read(buf);
+  const sheet = wb.SheetNames.find(n => n.toLowerCase() === 'data') || wb.SheetNames[0];
+  const rows  = XLSX.utils.sheet_to_json(wb.Sheets[sheet], { header: 1, defval: '' });
+  if (rows.length < 2) { alert('Feuille vide.'); unlock(); return; }
+
+  const headers = rows[0].map(h => String(h).trim());
+
+  const cEAN   = findCol(headers, ['EAN','ean','code barre','barcode','code-barre']);
+  const cTitle = findCol(headers, ['titre','title','nom produit','libellé','libelle','name']);
+  const cDesc  = findCol(headers, ['description','descri','body']);
+  const cAge   = findCol(headers, ['tranche','âge','age','public cible']);
+  const cColor = findCol(headers, ['couleur','color']);
+
+  // Image columns
+  const imgColIndexes = [];
+  const c0 = findCol(headers, ['image principale','image_principale','image 1','image1','photo principale','visuel principal']);
+  if (c0 !== -1) imgColIndexes.push(c0);
+  for (let n = 2; n <= 8; n++) {
+    const c = findCol(headers, [`image ${n}`, `image${n}`, `visuel ${n}`, `visuel${n}`, `photo ${n}`]);
+    if (c !== -1) imgColIndexes.push(c);
+  }
+
+  // Filter rows with valid EAN
+  const products = rows.slice(1).filter(r => {
+    const e = cEAN !== -1 ? String(r[cEAN] || '').trim() : '';
+    return e.length >= 8 && /^\d+$/.test(e);
+  });
+
+  if (!products.length) { alert('Aucun EAN valide trouvé.'); unlock(); return; }
+
+  document.getElementById('resultsSection').style.display = 'block';
+
+  for (let i = 0; i < products.length; i++) {
+    const row   = products[i];
+    const ean   = String(row[cEAN]   || '').trim();
+    const title = String(cTitle  !== -1 ? row[cTitle]  : '').trim();
+    const desc  = String(cDesc   !== -1 ? row[cDesc]   : '').trim();
+    const age   = String(cAge    !== -1 ? row[cAge]    : '').trim();
+    const color = String(cColor  !== -1 ? row[cColor]  : '').trim();
+
+    setProgress(i, products.length, `EAN ${i+1}/${products.length} : ${ean}`);
+    log('Téléchargement des images...');
+
+    const urls = imgColIndexes
+      .map(c => String(row[c] || '').trim())
+      .filter(u => /^https?:\/\//.test(u));
+
+    const images = [];
+    for (const url of urls.slice(0, 8)) {
+      try {
+        const img = await toBase64(url);
+        if (img) images.push(img);
+      } catch (_) {}
+    }
+
+    log(`Analyse Claude (${images.length} image(s))...`);
+
+    let result;
+    try {
+      result = await callClaude(apiKey, { ean, title, desc, age, color }, images);
+    } catch (e) {
+      result = { error: e.message };
+    }
+
+    allResults.push({ ean, title, result });
+    addRow(ean, title, result);
+    document.getElementById('resultsTitle').textContent = `Résultats — ${i+1} / ${products.length} traités`;
+
+    if (i < products.length - 1) await sleep(600);
+  }
+
+  setProgress(products.length, products.length, `✅ Terminé — ${products.length} produit(s)`);
+  log('');
+  unlock();
+}
+
+// ── Image → base64 ──────────────────────────────────────────────────────────
+function toBase64(url) {
+  return new Promise((resolve, reject) => {
+    fetch(url, { mode: 'cors' })
+      .then(r => { if (!r.ok) throw new Error(r.status); return r.blob(); })
+      .then(blob => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const [meta, b64] = reader.result.split(',');
+          const mediaType = (meta.match(/data:([^;]+)/) || [])[1] || 'image/jpeg';
+          resolve({ b64, mediaType });
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      })
+      .catch(reject);
+  });
+}
+
+// ── Claude API ──────────────────────────────────────────────────────────────
+async function callClaude(apiKey, product, images) {
+  const content = [];
+
+  for (const img of images) {
+    content.push({
+      type: 'image',
+      source: { type: 'base64', media_type: img.mediaType, data: img.b64 }
+    });
+  }
+
+  if (!images.length) {
+    content.push({ type: 'text', text: '(Aucune image accessible pour ce produit)' });
+  }
+
+  content.push({
+    type: 'text',
+    text: `Analyse la cohérence entre cette fiche produit et ses visuels.
+
+Fiche produit :
+- Titre : ${product.title || '(non renseigné)'}
+- Description : ${product.desc || '(non renseignée)'}
+- Tranche d'âge : ${product.age || '(non renseignée)'}
+- Couleur déclarée : ${product.color || '(non renseignée)'}
+
+Règle importante : une information ABSENTE du visuel n'est PAS une anomalie. Ne signale une contradiction que si l'image CONTREDIT activement la fiche.
+
+Verdicts possibles pour chaque critère :
+- "cohérent" : l'image confirme l'info
+- "contradiction" : l'image contredit l'info
+- "non vérifiable" : impossible à confirmer ou infirmer depuis le visuel
+
+Critères à évaluer :
+1. type_produit : le type de produit visible correspond-il au titre/description ?
+2. public : le public visible est-il cohérent avec la tranche d'âge déclarée ?
+3. couleur : la couleur visible correspond-elle à la couleur déclarée ?
+4. lot : la quantité visible est-elle cohérente ?
+5. texte_logo : quels textes/logos sont visibles sur le produit ?
+
+Réponds UNIQUEMENT en JSON valide, sans markdown :
+{
+  "verdict_global": "cohérent|contradiction|non vérifiable",
+  "type_produit": {"verdict": "...", "remarque": "..."},
+  "public": {"verdict": "...", "remarque": "..."},
+  "couleur": {"verdict": "...", "remarque": "..."},
+  "lot": {"verdict": "...", "remarque": "..."},
+  "texte_logo": {"verdict": "...", "remarque": "..."},
+  "remarques_generales": "..."
+}`
+  });
+
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-opus-4-8',
+      max_tokens: 800,
+      messages: [{ role: 'user', content }]
+    })
+  });
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error?.message || `HTTP ${resp.status}`);
+  }
+
+  const data = await resp.json();
+  const raw  = data.content[0].text.trim();
+  // Strip possible markdown fences
+  const clean = raw.replace(/^```json\s*/i, '').replace(/```$/, '').trim();
+  return JSON.parse(clean);
+}
+
+// ── Table row ───────────────────────────────────────────────────────────────
+function badge(v) {
+  if (!v) return '';
+  const cls = v === 'cohérent' ? 'coherent' : v === 'contradiction' ? 'contradiction' : 'nv';
+  return `<span class="badge badge-${cls}">${v}</span>`;
+}
+
+function cell(obj) {
+  if (!obj) return '';
+  return `${badge(obj.verdict)}<div class="remark">${obj.remarque || ''}</div>`;
+}
+
+function addRow(ean, title, result) {
+  const tr = document.createElement('tr');
+  if (result.error) {
+    tr.innerHTML = `
+      <td><strong>${ean}</strong><div class="ean-title">${title.slice(0,40)}</div></td>
+      <td colspan="7" class="error-cell">⚠ ${result.error}</td>`;
+  } else {
+    tr.innerHTML = `
+      <td><strong>${ean}</strong><div class="ean-title">${title.slice(0,40)}</div></td>
+      <td>${badge(result.verdict_global)}</td>
+      <td>${cell(result.type_produit)}</td>
+      <td>${cell(result.public)}</td>
+      <td>${cell(result.couleur)}</td>
+      <td>${cell(result.lot)}</td>
+      <td>${cell(result.texte_logo)}</td>
+      <td class="remark">${result.remarques_generales || ''}</td>`;
+  }
+  document.getElementById('resultsBody').appendChild(tr);
+}
+
+// ── Excel export ────────────────────────────────────────────────────────────
+function downloadExcel() {
+  const wb = XLSX.utils.book_new();
+  const rows = [['EAN','Titre','Verdict global','Type produit','Public/Âge','Couleur','Lot','Texte/Logo','Remarques générales']];
+
+  for (const { ean, title, result } of allResults) {
+    if (result.error) {
+      rows.push([ean, title, 'ERREUR', result.error, '', '', '', '', '']);
+    } else {
+      const f = k => `${result[k]?.verdict || ''} — ${result[k]?.remarque || ''}`;
+      rows.push([ean, title, result.verdict_global, f('type_produit'), f('public'), f('couleur'), f('lot'), f('texte_logo'), result.remarques_generales || '']);
+    }
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [14,32,14,35,30,30,22,35,40].map(w => ({ wch: w }));
+  XLSX.utils.book_append_sheet(wb, ws, 'Cohérence');
+  XLSX.writeFile(wb, `analyse_coherence_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+function setProgress(done, total, label) {
+  document.getElementById('progressBar').style.width = Math.round((done / total) * 100) + '%';
+  document.getElementById('progressLabel').textContent = label;
+}
+function log(msg) { document.getElementById('log').textContent = msg; }
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function unlock() { document.getElementById('startBtn').disabled = false; }
+</script>
+</body>
+</html>
