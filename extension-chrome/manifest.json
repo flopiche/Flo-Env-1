@@ -3,7 +3,7 @@
   "name": "El Carlitator",
   "version": "1.2",
   "description": "Compte les produits par vendeur et suit l'évolution quotidienne",
-  "permissions": ["storage", "downloads", "notifications", "alarms", "tabs", "scripting"],
+  "permissions": ["storage", "downloads", "notifications", "alarms"],
   "background": {
     "service_worker": "background.js"
   },
