@@ -168,7 +168,14 @@ async function startAnalysis() {
   if (!loadedWorkbook) { alert('Veuillez sélectionner un fichier Excel.'); unlock(); return; }
   const wb    = loadedWorkbook;
   const sheet = document.getElementById('sheetSelect').value || wb.SheetNames[0];
-  const rows  = XLSX.utils.sheet_to_json(wb.Sheets[sheet], { header: 1, defval: '' });
+  // Force range to start at A1 — some exports set dimension ref="A3:..." which makes SheetJS skip header rows
+  const ws = wb.Sheets[sheet];
+  if (ws['!ref']) {
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    range.s.r = 0; range.s.c = 0;
+    ws['!ref'] = XLSX.utils.encode_range(range);
+  }
+  const rows  = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
   if (rows.length < 2) { alert(`Feuille "${sheet}" vide ou illisible (${rows.length} ligne(s) lue(s)).`); unlock(); return; }
 
   // Support double header row (row1 = French labels, row2 = technical keys, row3+ = data)
