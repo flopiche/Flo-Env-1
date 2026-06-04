@@ -76,8 +76,13 @@ tr:hover td { background: #fafbfc; }
       <p class="key-note">🔒 Votre clé reste uniquement en mémoire de cette page et n'est envoyée qu'à api.anthropic.com</p>
     </div>
     <div class="field" style="margin-bottom:0">
-      <label for="fileInput">Fichier Excel export produits (onglet "Data")</label>
-      <input type="file" id="fileInput" accept=".xlsx,.xls">
+      <label for="fileInput">Fichier Excel export produits</label>
+      <input type="file" id="fileInput" accept=".xlsx,.xls" onchange="onFileChange(this)">
+    </div>
+    <div class="field" id="sheetField" style="display:none;margin-top:12px;margin-bottom:0">
+      <label for="sheetSelect">Onglet à analyser</label>
+      <select id="sheetSelect" style="width:100%;padding:10px 12px;border:1.5px solid #dfe6e9;border-radius:8px;font-size:0.875rem;outline:none;background:white"></select>
+      <p class="key-note" id="sheetNote"></p>
     </div>
   </div>
 
@@ -117,6 +122,24 @@ tr:hover td { background: #fafbfc; }
 
 <script>
 let allResults = [];
+let loadedWorkbook = null;
+
+function onFileChange(input) {
+  if (!input.files.length) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    loadedWorkbook = XLSX.read(e.target.result);
+    const sheets = loadedWorkbook.SheetNames;
+    const sel = document.getElementById('sheetSelect');
+    sel.innerHTML = sheets.map(n => `<option value="${n}">${n}</option>`).join('');
+    // Pre-select "Data" if exists
+    const dataSheet = sheets.find(n => n.toLowerCase() === 'data');
+    if (dataSheet) sel.value = dataSheet;
+    document.getElementById('sheetField').style.display = 'block';
+    document.getElementById('sheetNote').textContent = `${sheets.length} onglet(s) trouvé(s)`;
+  };
+  reader.readAsArrayBuffer(input.files[0]);
+}
 
 // ── Colonne finder ──────────────────────────────────────────────────────────
 function findCol(headers, terms) {
@@ -142,11 +165,11 @@ async function startAnalysis() {
 
   // Read file
   log('Lecture du fichier Excel...');
-  const buf  = await file.arrayBuffer();
-  const wb   = XLSX.read(buf);
-  const sheet = wb.SheetNames.find(n => n.toLowerCase() === 'data') || wb.SheetNames[0];
+  if (!loadedWorkbook) { alert('Veuillez sélectionner un fichier Excel.'); unlock(); return; }
+  const wb    = loadedWorkbook;
+  const sheet = document.getElementById('sheetSelect').value || wb.SheetNames[0];
   const rows  = XLSX.utils.sheet_to_json(wb.Sheets[sheet], { header: 1, defval: '' });
-  if (rows.length < 2) { alert('Feuille vide.'); unlock(); return; }
+  if (rows.length < 2) { alert(`Feuille "${sheet}" vide ou illisible.`); unlock(); return; }
 
   const headers = rows[0].map(h => String(h).trim());
 
