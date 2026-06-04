@@ -92,7 +92,7 @@ function updateVendorCountLabel(urls) {
 }
 
 async function fetchProductCount(url) {
-  const response = await fetch(url);
+  const response = await fetch(url, { cache: 'no-store' });
   const html = await response.text();
   const match = html.match(/class="productcount"[^>]*>\s*<strong>\s*(\d+)\s*<\/strong>/);
   if (!match) return null;
@@ -101,7 +101,7 @@ async function fetchProductCount(url) {
 }
 
 async function discoverVendorUrls() {
-  const response = await fetch(MARKETPLACE_URL);
+  const response = await fetch(MARKETPLACE_URL, { cache: 'no-store' });
   const html = await response.text();
 
   const urls = [];
