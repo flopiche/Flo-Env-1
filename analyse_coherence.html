@@ -128,7 +128,7 @@ function onFileChange(input) {
   if (!input.files.length) return;
   const reader = new FileReader();
   reader.onload = e => {
-    loadedWorkbook = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+    loadedWorkbook = XLSX.read(e.target.result, { type: 'binary' });
     const sheets = loadedWorkbook.SheetNames;
     const sel = document.getElementById('sheetSelect');
     sel.innerHTML = sheets.map(n => `<option value="${n}">${n}</option>`).join('');
@@ -138,7 +138,7 @@ function onFileChange(input) {
     document.getElementById('sheetField').style.display = 'block';
     document.getElementById('sheetNote').textContent = `${sheets.length} onglet(s) trouvé(s)`;
   };
-  reader.readAsArrayBuffer(input.files[0]);
+  reader.readAsBinaryString(input.files[0]);
 }
 
 // ── Colonne finder ──────────────────────────────────────────────────────────
@@ -169,9 +169,17 @@ async function startAnalysis() {
   const wb    = loadedWorkbook;
   const sheet = document.getElementById('sheetSelect').value || wb.SheetNames[0];
   const rows  = XLSX.utils.sheet_to_json(wb.Sheets[sheet], { header: 1, defval: '' });
-  if (rows.length < 2) { alert(`Feuille "${sheet}" vide ou illisible.`); unlock(); return; }
+  if (rows.length < 2) { alert(`Feuille "${sheet}" vide ou illisible (${rows.length} ligne(s) lue(s)).`); unlock(); return; }
 
-  const headers = rows[0].map(h => String(h).trim());
+  // Support double header row (row1 = French labels, row2 = technical keys, row3+ = data)
+  // Detect by checking if row2 looks like a header too (no numeric EAN)
+  let headerRow = 0;
+  let dataStart = 1;
+  if (rows.length >= 3) {
+    const r2ean = String(rows[1][rows[1].findIndex((_, i) => String(rows[0][i] || '').toLowerCase().includes('ean'))] || '');
+    if (!/^\d{8,}$/.test(r2ean.trim())) { headerRow = 0; dataStart = 2; } // row2 is also a header
+  }
+  const headers = rows[headerRow].map(h => String(h).trim());
 
   const cEAN   = findCol(headers, ['EAN','ean','code barre','barcode','code-barre']);
   const cTitle = findCol(headers, ['titre','title','nom produit','libellé','libelle','name']);
@@ -189,7 +197,7 @@ async function startAnalysis() {
   }
 
   // Filter rows with valid EAN
-  const products = rows.slice(1).filter(r => {
+  const products = rows.slice(dataStart).filter(r => {
     const e = cEAN !== -1 ? String(r[cEAN] || '').trim() : '';
     return e.length >= 8 && /^\d+$/.test(e);
   });
