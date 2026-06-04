@@ -10,27 +10,24 @@ function getToday() {
   return new Date().toISOString().split('T')[0];
 }
 
-// Clé unique par exécution en GMT+2 : "2026-06-03T14:32:45"
+// Clé unique par exécution en GMT+2 : "2026-06-03T14:32"
 function getNowKey() {
   const now = new Date(Date.now() + 2 * 60 * 60 * 1000);
-  return now.toISOString().slice(0, 19);
+  return now.toISOString().slice(0, 16);
 }
 
-// Retourne la clé de référence stable :
-// - dernière entrée d'un jour différent si elle existe
-// - sinon première entrée du jour (le delta du jour reste visible)
-function getLastKnownDate(dates, latestKey) {
-  if (!latestKey) return null;
-  const latestDay = latestKey.slice(0, 10);
+// Retourne l'avant-dernière date connue (toutes dates confondues)
+function getLastKnownDate(dates, today) {
   const sorted = Object.keys(dates).sort();
-
-  // Dernière entrée d'un jour antérieur
-  const prevDay = sorted.filter(k => k.slice(0, 10) < latestDay).at(-1);
-  if (prevDay) return prevDay;
-
-  // Même jour : première entrée du jour (référence stable)
-  const firstToday = sorted.find(k => k.slice(0, 10) === latestDay);
-  return firstToday !== latestKey ? firstToday : null;
+  // Si on a une valeur aujourd'hui, on prend l'entrée juste avant
+  // Sinon on prend la dernière connue
+  if (dates[today] !== undefined && sorted.length >= 2) {
+    return sorted.at(-2);
+  }
+  if (dates[today] === undefined && sorted.length >= 1) {
+    return sorted.at(-1);
+  }
+  return null;
 }
 
 function extractVendorName(url) {
