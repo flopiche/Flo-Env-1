@@ -101,7 +101,7 @@ async function fetchProductCount(url) {
 }
 
 async function discoverVendorUrls() {
-  const response = await fetch(MARKETPLACE_URL + '?_=' + Date.now());
+  const response = await fetch(MARKETPLACE_URL);
   const html = await response.text();
 
   const urls = [];
