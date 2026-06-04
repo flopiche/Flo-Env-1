@@ -128,7 +128,7 @@ function onFileChange(input) {
   if (!input.files.length) return;
   const reader = new FileReader();
   reader.onload = e => {
-    loadedWorkbook = XLSX.read(e.target.result);
+    loadedWorkbook = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
     const sheets = loadedWorkbook.SheetNames;
     const sel = document.getElementById('sheetSelect');
     sel.innerHTML = sheets.map(n => `<option value="${n}">${n}</option>`).join('');
