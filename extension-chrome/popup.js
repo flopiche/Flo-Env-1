@@ -92,7 +92,7 @@ function updateVendorCountLabel(urls) {
 }
 
 async function fetchProductCount(url) {
-  const response = await fetch(url + '?_=' + Date.now());
+  const response = await fetch(url);
   const html = await response.text();
   const match = html.match(/class="productcount"[^>]*>\s*<strong>\s*(\d+)\s*<\/strong>/);
   if (!match) return null;
