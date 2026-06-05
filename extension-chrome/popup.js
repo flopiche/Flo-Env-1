@@ -98,23 +98,47 @@ async function fetchProductCount(url) {
   return isNaN(count) ? null : count;
 }
 
-async function discoverVendorUrls() {
-  const response = await fetch(MARKETPLACE_URL);
-  const html = await response.text();
+function discoverVendorUrls() {
+  return new Promise((resolve, reject) => {
+    chrome.tabs.create({ url: MARKETPLACE_URL, active: false }, (tab) => {
+      const tabId = tab.id;
 
-  const urls = [];
-  const re = /class="refinement v_[^"]*"[^>]*>.*?data-url="([^"]+)"/gs;
-  let m;
-  while ((m = re.exec(html)) !== null) {
-    try {
-      const decoded = decodeURIComponent(atob(m[1]));
-      if (decoded.includes('vendeur=')) {
-        urls.push('https://www.vertbaudet.fr' + decoded);
+      function onUpdated(updatedTabId, info) {
+        if (updatedTabId !== tabId || info.status !== 'complete') return;
+        chrome.tabs.onUpdated.removeListener(onUpdated);
+
+        setTimeout(() => {
+          chrome.scripting.executeScript(
+            {
+              target: { tabId },
+              func: () => {
+                const urls = [];
+                document.querySelectorAll('li[class*=" v_"] span[data-url]').forEach(span => {
+                  try {
+                    const decoded = decodeURIComponent(atob(span.dataset.url));
+                    if (decoded.includes('vendeur=')) {
+                      urls.push('https://www.vertbaudet.fr' + decoded);
+                    }
+                  } catch (e) {}
+                });
+                return [...new Set(urls)];
+              }
+            },
+            (results) => {
+              chrome.tabs.remove(tabId);
+              if (chrome.runtime.lastError || !results?.[0]) {
+                reject(new Error('Impossible d\'extraire les vendeurs.'));
+              } else {
+                resolve(results[0].result);
+              }
+            }
+          );
+        }, 3000);
       }
-    } catch (e) {}
-  }
 
-  return [...new Set(urls)];
+      chrome.tabs.onUpdated.addListener(onUpdated);
+    });
+  });
 }
 
 // Exécute les promesses par batch de taille N
