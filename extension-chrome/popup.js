@@ -112,16 +112,36 @@ function discoverVendorUrls() {
             {
               target: { tabId },
               func: () => {
-                const urls = [];
-                document.querySelectorAll('li[class*=" v_"] span[data-url]').forEach(span => {
-                  try {
-                    const decoded = decodeURIComponent(atob(span.dataset.url));
-                    if (decoded.includes('vendeur=')) {
-                      urls.push('https://www.vertbaudet.fr' + decoded);
+                return new Promise((resolve) => {
+                  const extract = () => {
+                    const spans = document.querySelectorAll('li[class*=" v_"] span[data-url]');
+                    if (spans.length === 0) return null;
+                    const urls = [];
+                    spans.forEach(span => {
+                      try {
+                        const decoded = decodeURIComponent(atob(span.dataset.url));
+                        if (decoded.includes('vendeur=')) {
+                          urls.push('https://www.vertbaudet.fr' + decoded);
+                        }
+                      } catch (e) {}
+                    });
+                    return [...new Set(urls)];
+                  };
+
+                  // Polling toutes les 500ms, max 15 secondes
+                  let elapsed = 0;
+                  const interval = setInterval(() => {
+                    const result = extract();
+                    elapsed += 500;
+                    if (result && result.length > 0) {
+                      clearInterval(interval);
+                      resolve(result);
+                    } else if (elapsed >= 15000) {
+                      clearInterval(interval);
+                      resolve([]);
                     }
-                  } catch (e) {}
+                  }, 500);
                 });
-                return [...new Set(urls)];
               }
             },
             (results) => {
