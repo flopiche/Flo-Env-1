@@ -45,11 +45,12 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 async function fetchCount(url) {
   try {
     const response = await fetch(url);
+    if (!response.ok) return null;
     const html = await response.text();
     const match = html.match(/class="productcount"[^>]*>\s*<strong>\s*(\d+)\s*<\/strong>/);
-    if (!match) return null;
+    if (!match) return 0; // page accessible mais vendeur disparu
     const count = parseInt(match[1], 10);
-    return isNaN(count) ? null : count;
+    return isNaN(count) ? 0 : count;
   } catch (e) {
     return null;
   }
@@ -102,6 +103,30 @@ async function runHourlyCheck() {
 
   await chrome.storage.local.set({ vendors });
 
+  const disparus = [];
+  for (const url of vendorUrls) {
+    const match = url.match(/vendeur=([^.&/]+)/);
+    if (!match) continue;
+    const vendor = match[1].replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const dates = vendors[vendor] || {};
+    const lastKey = getLatestKey(dates);
+    const lastCount = lastKey ? dates[lastKey] : null;
+    if (lastCount === 0 && Object.keys(dates).length >= 2) {
+      const prevKey = Object.keys(dates).sort().at(-2);
+      if (prevKey && dates[prevKey] > 0) disparus.push(vendor);
+    }
+  }
+
+  if (disparus.length > 0) {
+    chrome.notifications.create('disparu-alert', {
+      type: 'basic',
+      iconUrl: 'icon48.png',
+      title: `⚠️ El Carlitator — ${disparus.length} vendeur(s) disparu(s)`,
+      message: disparus.join(', '),
+      priority: 2
+    });
+  }
+
   if (baisses.length > 0) {
     const message = baisses
       .map(b => `${b.vendor} : ${b.lastCount} → ${b.count} (${b.pct}%)`)
@@ -110,7 +135,7 @@ async function runHourlyCheck() {
     chrome.notifications.create('baisse-alert', {
       type: 'basic',
       iconUrl: 'icon48.png',
-      title: `⚠️ El Carlitator — ${baisses.length} baisse(s) détectée(s)`,
+      title: `📉 El Carlitator — ${baisses.length} baisse(s) détectée(s)`,
       message,
       priority: 2
     });

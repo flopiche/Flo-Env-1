@@ -66,7 +66,9 @@ function renderTable(vendors) {
       : '<span style="color:#999">—</span>';
 
     let evoBadge = '<span class="badge same">—</span>';
-    if (countToday !== null && countLast !== null && countLast !== 0) {
+    if (countToday === 0 && countLast > 0) {
+      evoBadge = '<span class="badge down">⚠️ Disparu</span>';
+    } else if (countToday !== null && countLast !== null && countLast !== 0) {
       const pct = ((countToday - countLast) / countLast * 100).toFixed(1);
       const sign = pct > 0 ? '+' : '';
       const cls = pct > 0 ? 'up' : pct < 0 ? 'down' : 'same';
@@ -89,12 +91,17 @@ function updateVendorCountLabel(urls) {
 }
 
 async function fetchProductCount(url) {
-  const response = await fetch(url);
-  const html = await response.text();
-  const match = html.match(/class="productcount"[^>]*>\s*<strong>\s*(\d+)\s*<\/strong>/);
-  if (!match) return null;
-  const count = parseInt(match[1], 10);
-  return isNaN(count) ? null : count;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null; // erreur réseau
+    const html = await response.text();
+    const match = html.match(/class="productcount"[^>]*>\s*<strong>\s*(\d+)\s*<\/strong>/);
+    if (!match) return 0; // page accessible mais 0 produit ou vendeur disparu
+    const count = parseInt(match[1], 10);
+    return isNaN(count) ? 0 : count;
+  } catch (e) {
+    return null; // erreur réseau, on ignore
+  }
 }
 
 function discoverVendorUrls() {
@@ -249,9 +256,11 @@ document.getElementById('btnCount').addEventListener('click', async () => {
     chrome.storage.local.set({ vendors }, () => {
       renderTable(vendors);
       const errors = results.filter(r => !r.ok && r.vendor).map(r => r.vendor);
-      status.textContent = errors.length > 0
-        ? `✅ ${saved} enregistrés. ❌ Erreurs (${errors.length}) : ${errors.slice(0, 3).join(', ')}${errors.length > 3 ? '…' : ''}`
-        : `✅ ${saved} vendeur(s) mis à jour.`;
+      const disparus = results.filter(r => r.count === 0 && r.vendor).map(r => r.vendor);
+      let msg = `✅ ${saved} vendeur(s) mis à jour.`;
+      if (disparus.length > 0) msg += ` ⚠️ Disparu(s) : ${disparus.join(', ')}`;
+      if (errors.length > 0) msg += ` ❌ Erreurs (${errors.length})`;
+      status.textContent = msg;
       btn.disabled = false;
       btn.textContent = '▶ Compter maintenant';
     });
