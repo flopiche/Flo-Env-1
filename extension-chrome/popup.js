@@ -99,63 +99,56 @@ async function fetchProductCount(url) {
 
 function discoverVendorUrls() {
   return new Promise((resolve, reject) => {
-    chrome.tabs.create({ url: MARKETPLACE_URL, active: false }, (tab) => {
-      const tabId = tab.id;
-
-      function onUpdated(updatedTabId, info) {
-        if (updatedTabId !== tabId || info.status !== 'complete') return;
-        chrome.tabs.onUpdated.removeListener(onUpdated);
-
-        setTimeout(() => {
-          chrome.scripting.executeScript(
-            {
-              target: { tabId },
-              func: () => {
-                return new Promise((resolve) => {
-                  const extract = () => {
-                    const spans = document.querySelectorAll('li[class*=" v_"] span[data-url]');
-                    if (spans.length === 0) return null;
-                    const urls = [];
-                    spans.forEach(span => {
-                      try {
-                        const decoded = decodeURIComponent(atob(span.dataset.url));
-                        if (decoded.includes('vendeur=')) {
-                          urls.push('https://www.vertbaudet.fr' + decoded);
-                        }
-                      } catch (e) {}
-                    });
-                    return [...new Set(urls)];
-                  };
-
-                  // Polling toutes les 500ms, max 15 secondes
-                  let elapsed = 0;
-                  const interval = setInterval(() => {
-                    const result = extract();
-                    elapsed += 500;
-                    if (result && result.length > 0) {
-                      clearInterval(interval);
-                      resolve(result);
-                    } else if (elapsed >= 15000) {
-                      clearInterval(interval);
-                      resolve([]);
-                    }
-                  }, 500);
-                });
-              }
-            },
-            (results) => {
-              chrome.tabs.remove(tabId);
-              if (chrome.runtime.lastError || !results?.[0]) {
-                reject(new Error('Impossible d\'extraire les vendeurs.'));
-              } else {
-                resolve(results[0].result);
-              }
-            }
-          );
-        }, 3000);
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const tab = tabs[0];
+      if (!tab || !tab.url || !tab.url.includes('vertbaudet.fr/shop/marketplace')) {
+        reject(new Error('Ouvrez d\'abord la page marketplace Vertbaudet dans cet onglet.'));
+        return;
       }
 
-      chrome.tabs.onUpdated.addListener(onUpdated);
+      chrome.scripting.executeScript(
+        {
+          target: { tabId: tab.id },
+          func: () => {
+            return new Promise((resolve) => {
+              const extract = () => {
+                const spans = document.querySelectorAll('li[class*=" v_"] span[data-url]');
+                if (spans.length === 0) return null;
+                const urls = [];
+                spans.forEach(span => {
+                  try {
+                    const decoded = decodeURIComponent(atob(span.dataset.url));
+                    if (decoded.includes('vendeur=')) {
+                      urls.push('https://www.vertbaudet.fr' + decoded);
+                    }
+                  } catch (e) {}
+                });
+                return [...new Set(urls)];
+              };
+
+              let elapsed = 0;
+              const interval = setInterval(() => {
+                const result = extract();
+                elapsed += 500;
+                if (result && result.length > 0) {
+                  clearInterval(interval);
+                  resolve(result);
+                } else if (elapsed >= 10000) {
+                  clearInterval(interval);
+                  resolve([]);
+                }
+              }, 500);
+            });
+          }
+        },
+        (results) => {
+          if (chrome.runtime.lastError || !results?.[0]) {
+            reject(new Error('Impossible de lire la page.'));
+          } else {
+            resolve(results[0].result);
+          }
+        }
+      );
     });
   });
 }
