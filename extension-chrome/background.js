@@ -9,15 +9,15 @@ chrome.runtime.onStartup.addListener(() => {
 });
 
 function setupAlarms() {
-  // Rappel quotidien à 9h30
+  // Rappel quotidien à 10h30
   const now = new Date(Date.now() + 2 * 60 * 60 * 1000);
-  const next930 = new Date(now);
-  next930.setHours(9, 30, 0, 0);
-  if (next930 <= now) next930.setDate(next930.getDate() + 1);
-  chrome.alarms.create('daily-reminder', { when: next930.getTime() - 2 * 60 * 60 * 1000 });
+  const next1030 = new Date(now);
+  next1030.setHours(10, 30, 0, 0);
+  if (next1030 <= now) next1030.setDate(next1030.getDate() + 1);
+  chrome.alarms.create('daily-reminder', { when: next1030.getTime() - 2 * 60 * 60 * 1000 });
 
-  // Vérification horaire des baisses
-  chrome.alarms.create('hourly-check', { periodInMinutes: 60 });
+  // Vérification toutes les 4h
+  chrome.alarms.create('hourly-check', { periodInMinutes: 240 });
 }
 
 chrome.alarms.onAlarm.addListener((alarm) => {
