@@ -265,6 +265,15 @@ document.getElementById('btnCount').addEventListener('click', async () => {
     );
 
     const vendors = stored.vendors || {};
+    const prevCounts = {};
+    // Capture les valeurs avant écrasement pour comparer
+    for (const { vendor } of results) {
+      if (!vendor) continue;
+      const dates = vendors[vendor] || {};
+      const latestKey = getLatestKey(dates);
+      prevCounts[vendor] = latestKey ? dates[latestKey] : null;
+    }
+
     let saved = 0;
     for (const { vendor, count, ok } of results) {
       if (!vendor) continue;
@@ -277,10 +286,35 @@ document.getElementById('btnCount').addEventListener('click', async () => {
 
     chrome.storage.local.set({ vendors }, () => {
       renderTable(vendors);
+
+      const SEUIL = 15;
+      const alertLines = [];
+      for (const { vendor, count, ok } of results) {
+        if (!vendor || !ok) continue;
+        const prev = prevCounts[vendor];
+        if (count === 0 && prev > 0) {
+          alertLines.push({ text: `⚠️ ${vendor} — DISPARU (était ${prev})`, disparu: true });
+        } else if (prev !== null && prev > 0) {
+          const pct = ((count - prev) / prev) * 100;
+          if (pct <= -SEUIL) {
+            alertLines.push({ text: `📉 ${vendor} : ${prev} → ${count} (${pct.toFixed(1)}%)`, disparu: false });
+          }
+        }
+      }
+
+      const alertBox = document.getElementById('alertBox');
+      const alertList = document.getElementById('alertList');
+      if (alertLines.length > 0) {
+        alertList.innerHTML = alertLines
+          .map(a => `<li${a.disparu ? ' class="alert-disparu"' : ''}>${a.text}</li>`)
+          .join('');
+        alertBox.style.display = 'block';
+      } else {
+        alertBox.style.display = 'none';
+      }
+
       const errors = results.filter(r => !r.ok && r.vendor).map(r => r.vendor);
-      const disparus = results.filter(r => r.count === 0 && r.vendor).map(r => r.vendor);
       let msg = `✅ ${saved} vendeur(s) mis à jour.`;
-      if (disparus.length > 0) msg += ` ⚠️ Disparu(s) : ${disparus.join(', ')}`;
       if (errors.length > 0) msg += ` ❌ Erreurs (${errors.length})`;
       status.textContent = msg;
       btn.disabled = false;
