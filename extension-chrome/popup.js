@@ -124,7 +124,7 @@ function updateVendorCountLabel(urls) {
 
 async function fetchProductCount(url) {
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { cache: 'no-cache' });
     if (!response.ok) return null; // erreur réseau
     const html = await response.text();
     const match = html.match(/class="productcount"[^>]*>\s*<strong>\s*(\d+)\s*<\/strong>/);
@@ -206,7 +206,7 @@ async function batchAll(items, batchSize, asyncFn, onProgress) {
 
 async function fetchMarketplaceTotal() {
   try {
-    const response = await fetch(MARKETPLACE_URL);
+    const response = await fetch(MARKETPLACE_URL, { cache: 'no-cache' });
     if (!response.ok) return null;
     const html = await response.text();
     const match = html.match(/class="productcount"[^>]*>\s*<strong>\s*(\d+)\s*<\/strong>/);
