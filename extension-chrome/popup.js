@@ -50,12 +50,18 @@ function renderTable(vendors) {
     return;
   }
 
-  tbody.innerHTML = rows.map(([vendor, dates]) => {
+  let totalLast = 0;
+  let totalLatest = 0;
+
+  const rowsHtml = rows.map(([vendor, dates]) => {
     // Dernière exécution = la plus récente
     const latestKey = getLatestKey(dates);
     const countToday = latestKey ? dates[latestKey] : null;
     const lastDate = getLastKnownDate(dates, latestKey);
     const countLast = lastDate ? dates[lastDate] : null;
+
+    if (countLast !== null) totalLast += countLast;
+    if (countToday !== null) totalLatest += countToday;
 
     const lastCell = countLast !== null
       ? `${countLast} <span style="color:#aaa;font-size:11px">(${lastDate.slice(0,10).split('-').reverse().join('/')} ${lastDate.slice(11,16)})</span>`
@@ -83,6 +89,22 @@ function renderTable(vendors) {
         <td>${evoBadge}</td>
       </tr>`;
   }).join('');
+
+  let totalEvoBadge = '<span class="badge same">—</span>';
+  if (totalLast > 0) {
+    const totalPct = ((totalLatest - totalLast) / totalLast * 100).toFixed(1);
+    const sign = totalPct > 0 ? '+' : '';
+    const cls = totalPct > 0 ? 'up' : totalPct < 0 ? 'down' : 'same';
+    totalEvoBadge = `<span class="badge ${cls}">${sign}${totalPct}%</span>`;
+  }
+
+  tbody.innerHTML = rowsHtml + `
+    <tr class="total-row">
+      <td><strong>TOTAL</strong></td>
+      <td><strong>${totalLast}</strong></td>
+      <td><strong>${totalLatest}</strong></td>
+      <td>${totalEvoBadge}</td>
+    </tr>`;
 }
 
 function updateVendorCountLabel(urls) {
