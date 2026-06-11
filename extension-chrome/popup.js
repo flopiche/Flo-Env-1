@@ -40,9 +40,8 @@ function getLatestKey(dates) {
   return Object.keys(dates).sort().at(-1) ?? null;
 }
 
-function renderTable(vendors) {
+function renderTable(vendors, marketplaceTotals) {
   const tbody = document.getElementById('tableBody');
-  const today = getToday();
 
   const rows = Object.entries(vendors);
   if (rows.length === 0) {
@@ -50,18 +49,11 @@ function renderTable(vendors) {
     return;
   }
 
-  let totalLast = 0;
-  let totalLatest = 0;
-
   const rowsHtml = rows.map(([vendor, dates]) => {
-    // Dernière exécution = la plus récente
     const latestKey = getLatestKey(dates);
     const countToday = latestKey ? dates[latestKey] : null;
     const lastDate = getLastKnownDate(dates, latestKey);
     const countLast = lastDate ? dates[lastDate] : null;
-
-    if (countLast !== null) totalLast += countLast;
-    if (countToday !== null) totalLatest += countToday;
 
     const lastCell = countLast !== null
       ? `${countLast} <span style="color:#aaa;font-size:11px">(${lastDate.slice(0,10).split('-').reverse().join('/')} ${lastDate.slice(11,16)})</span>`
@@ -90,21 +82,39 @@ function renderTable(vendors) {
       </tr>`;
   }).join('');
 
-  let totalEvoBadge = '<span class="badge same">—</span>';
-  if (totalLast > 0) {
-    const totalPct = ((totalLatest - totalLast) / totalLast * 100).toFixed(1);
-    const sign = totalPct > 0 ? '+' : '';
-    const cls = totalPct > 0 ? 'up' : totalPct < 0 ? 'down' : 'same';
-    totalEvoBadge = `<span class="badge ${cls}">${sign}${totalPct}%</span>`;
+  // Ligne total : basée sur le total marketplace si dispo
+  let totalRowHtml = '';
+  if (marketplaceTotals) {
+    const latestKey = getLatestKey(marketplaceTotals);
+    const totalLatest = latestKey ? marketplaceTotals[latestKey] : null;
+    const prevKey = getLastKnownDate(marketplaceTotals, latestKey);
+    const totalPrev = prevKey ? marketplaceTotals[prevKey] : null;
+
+    const prevCell = totalPrev !== null
+      ? `${totalPrev.toLocaleString('fr-FR')} <span style="color:#aaa;font-size:11px">(${prevKey.slice(0,10).split('-').reverse().join('/')} ${prevKey.slice(11,16)})</span>`
+      : '<span style="color:#999">—</span>';
+    const latestCell = totalLatest !== null
+      ? `${totalLatest.toLocaleString('fr-FR')} <span style="color:#aaa;font-size:11px">(${latestKey.slice(0,10).split('-').reverse().join('/')} ${latestKey.slice(11,16)})</span>`
+      : '<span style="color:#999">—</span>';
+
+    let totalEvoBadge = '<span class="badge same">—</span>';
+    if (totalLatest !== null && totalPrev !== null && totalPrev > 0) {
+      const pct = ((totalLatest - totalPrev) / totalPrev * 100).toFixed(1);
+      const sign = pct > 0 ? '+' : '';
+      const cls = pct > 0 ? 'up' : pct < 0 ? 'down' : 'same';
+      totalEvoBadge = `<span class="badge ${cls}">${sign}${pct}%</span>`;
+    }
+
+    totalRowHtml = `
+      <tr class="total-row">
+        <td><strong>TOTAL marketplace</strong></td>
+        <td><strong>${prevCell}</strong></td>
+        <td><strong>${latestCell}</strong></td>
+        <td>${totalEvoBadge}</td>
+      </tr>`;
   }
 
-  tbody.innerHTML = rowsHtml + `
-    <tr class="total-row">
-      <td><strong>TOTAL</strong></td>
-      <td><strong>${totalLast}</strong></td>
-      <td><strong>${totalLatest}</strong></td>
-      <td>${totalEvoBadge}</td>
-    </tr>`;
+  tbody.innerHTML = rowsHtml + totalRowHtml;
 }
 
 function updateVendorCountLabel(urls) {
@@ -194,9 +204,23 @@ async function batchAll(items, batchSize, asyncFn, onProgress) {
   return results;
 }
 
+async function fetchMarketplaceTotal() {
+  try {
+    const response = await fetch(MARKETPLACE_URL);
+    if (!response.ok) return null;
+    const html = await response.text();
+    const match = html.match(/class="productcount"[^>]*>\s*<strong>\s*(\d+)\s*<\/strong>/);
+    if (!match) return null;
+    const count = parseInt(match[1], 10);
+    return isNaN(count) ? null : count;
+  } catch (e) {
+    return null;
+  }
+}
+
 // Init
-chrome.storage.local.get(['vendors', 'vendorUrls'], (result) => {
-  renderTable(result.vendors || {});
+chrome.storage.local.get(['vendors', 'vendorUrls', 'marketplaceTotals'], (result) => {
+  renderTable(result.vendors || {}, result.marketplaceTotals || null);
   updateVendorCountLabel(result.vendorUrls || []);
 });
 
@@ -233,7 +257,7 @@ document.getElementById('btnCount').addEventListener('click', async () => {
   btn.disabled = true;
   status.textContent = '';
 
-  chrome.storage.local.get(['vendors', 'vendorUrls'], async (stored) => {
+  chrome.storage.local.get(['vendors', 'vendorUrls', 'marketplaceTotals'], async (stored) => {
     const vendorUrls = stored.vendorUrls || [];
 
     if (vendorUrls.length === 0) {
@@ -243,30 +267,34 @@ document.getElementById('btnCount').addEventListener('click', async () => {
       return;
     }
 
-    const today = getToday();
     const nowKey = getNowKey();
     btn.textContent = `⏳ 0/${vendorUrls.length}…`;
 
-    const results = await batchAll(
-      vendorUrls,
-      BATCH_SIZE,
-      async (url) => {
-        const vendor = extractVendorName(url);
-        try {
-          const count = await fetchProductCount(url);
-          return { vendor, count, ok: count !== null };
-        } catch (e) {
-          return { vendor, count: null, ok: false };
+    // Fetch vendeurs + total marketplace en parallèle
+    const [results, marketplaceTotal] = await Promise.all([
+      batchAll(
+        vendorUrls,
+        BATCH_SIZE,
+        async (url) => {
+          const vendor = extractVendorName(url);
+          try {
+            const count = await fetchProductCount(url);
+            return { vendor, count, ok: count !== null };
+          } catch (e) {
+            return { vendor, count: null, ok: false };
+          }
+        },
+        (done, total) => {
+          btn.textContent = `⏳ ${done}/${total}…`;
         }
-      },
-      (done, total) => {
-        btn.textContent = `⏳ ${done}/${total}…`;
-      }
-    );
+      ),
+      fetchMarketplaceTotal()
+    ]);
 
     const vendors = stored.vendors || {};
+    const marketplaceTotals = stored.marketplaceTotals || {};
     const prevCounts = {};
-    // Capture les valeurs avant écrasement pour comparer
+
     for (const { vendor } of results) {
       if (!vendor) continue;
       const dates = vendors[vendor] || {};
@@ -284,8 +312,12 @@ document.getElementById('btnCount').addEventListener('click', async () => {
       }
     }
 
-    chrome.storage.local.set({ vendors }, () => {
-      renderTable(vendors);
+    if (marketplaceTotal !== null) {
+      marketplaceTotals[nowKey] = marketplaceTotal;
+    }
+
+    chrome.storage.local.set({ vendors, marketplaceTotals }, () => {
+      renderTable(vendors, Object.keys(marketplaceTotals).length > 0 ? marketplaceTotals : null);
 
       const SEUIL = 15;
       const alertLines = [];
@@ -315,6 +347,7 @@ document.getElementById('btnCount').addEventListener('click', async () => {
 
       const errors = results.filter(r => !r.ok && r.vendor).map(r => r.vendor);
       let msg = `✅ ${saved} vendeur(s) mis à jour.`;
+      if (marketplaceTotal !== null) msg += ` • Total marketplace : ${marketplaceTotal.toLocaleString('fr-FR')}`;
       if (errors.length > 0) msg += ` ❌ Erreurs (${errors.length})`;
       status.textContent = msg;
       btn.disabled = false;
