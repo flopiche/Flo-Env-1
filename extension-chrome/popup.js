@@ -49,6 +49,8 @@ function renderTable(vendors, marketplaceTotals) {
     return;
   }
 
+  const SEUIL = 15;
+
   const rowsHtml = rows.map(([vendor, dates]) => {
     const latestKey = getLatestKey(dates);
     const countToday = latestKey ? dates[latestKey] : null;
@@ -64,13 +66,19 @@ function renderTable(vendors, marketplaceTotals) {
       : '<span style="color:#999">—</span>';
 
     let evoBadge = '<span class="badge same">—</span>';
+    let mailBtn = '';
+
     if (countToday === 0 && countLast > 0) {
-      evoBadge = '<span class="badge down">⚠️ Disparu</span>';
+      evoBadge = '<span class="badge down">&#9888;&#65039; Disparu</span>';
+      mailBtn = `<button class="btn-mail" data-vendor="${vendor}" data-prev="${countLast}" data-curr="0" data-pct="disparu">&#9993;&#65039;</button>`;
     } else if (countToday !== null && countLast !== null && countLast !== 0) {
       const pct = ((countToday - countLast) / countLast * 100).toFixed(1);
       const sign = pct > 0 ? '+' : '';
       const cls = pct > 0 ? 'up' : pct < 0 ? 'down' : 'same';
       evoBadge = `<span class="badge ${cls}">${sign}${pct}%</span>`;
+      if (parseFloat(pct) <= -SEUIL) {
+        mailBtn = `<button class="btn-mail" data-vendor="${vendor}" data-prev="${countLast}" data-curr="${countToday}" data-pct="${pct}">&#9993;&#65039;</button>`;
+      }
     }
 
     return `
@@ -78,7 +86,7 @@ function renderTable(vendors, marketplaceTotals) {
         <td><strong>${vendor}</strong></td>
         <td>${lastCell}</td>
         <td>${todayCell}</td>
-        <td>${evoBadge}</td>
+        <td>${evoBadge}${mailBtn}</td>
       </tr>`;
   }).join('');
 
@@ -425,4 +433,72 @@ document.getElementById('btnClear').addEventListener('click', () => {
   if (confirm('Effacer toutes les données ?')) {
     chrome.storage.local.remove('vendors', () => renderTable({}));
   }
+});
+
+// Génération mail — délégation sur le tableau
+document.getElementById('tableBody').addEventListener('click', (e) => {
+  const btn = e.target.closest('.btn-mail');
+  if (!btn) return;
+
+  const vendor = btn.dataset.vendor;
+  const prev = btn.dataset.prev;
+  const curr = btn.dataset.curr;
+  const pct = btn.dataset.pct;
+  const today = new Date().toLocaleDateString('fr-FR');
+
+  let corps;
+  if (pct === 'disparu') {
+    corps = `Objet : Disparition de produits – ${vendor}
+
+Bonjour,
+
+Nous avons constaté que les produits du vendeur ${vendor} ne sont plus référencés sur la marketplace Vertbaudet.
+
+Avant : ${prev} produit(s)
+Actuellement : 0 produit(s)
+
+Pourriez-vous nous indiquer la raison de cette disparition et nous préciser si elle est temporaire ou définitive ?
+
+Nous restons disponibles pour tout échange à ce sujet.
+
+Bien cordialement`;
+  } else {
+    corps = `Objet : Baisse significative de produits – ${vendor}
+
+Bonjour,
+
+Nous avons constaté une baisse importante du nombre de produits référencés pour le vendeur ${vendor} sur la marketplace Vertbaudet.
+
+Avant : ${prev} produit(s)
+Actuellement : ${curr} produit(s)
+Évolution : ${pct}%
+
+Pourriez-vous nous indiquer si cette évolution est volontaire ou s'il s'agit d'un problème technique ?
+
+Nous restons disponibles pour tout échange à ce sujet.
+
+Bien cordialement`;
+  }
+
+  document.getElementById('mailText').value = corps;
+  document.getElementById('mailModal').classList.add('open');
+});
+
+document.getElementById('btnCloseMail').addEventListener('click', () => {
+  document.getElementById('mailModal').classList.remove('open');
+});
+
+document.getElementById('mailModal').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('mailModal')) {
+    document.getElementById('mailModal').classList.remove('open');
+  }
+});
+
+document.getElementById('btnCopyMail').addEventListener('click', () => {
+  const text = document.getElementById('mailText').value;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('btnCopyMail');
+    btn.textContent = '✅ Copié !';
+    setTimeout(() => { btn.textContent = '📋 Copier'; }, 1500);
+  });
 });
