@@ -68,9 +68,12 @@ function renderTable(vendors, marketplaceTotals) {
     let evoBadge = '<span class="badge same">—</span>';
     let mailBtn = '';
 
-    if (countToday === 0 && countLast > 0) {
+    const everHadProducts = Object.values(dates).some(v => v > 0);
+    const maxEver = everHadProducts ? Math.max(...Object.values(dates).filter(v => v > 0)) : null;
+
+    if (countToday === 0 && everHadProducts) {
       evoBadge = '<span class="badge down">&#9888;&#65039; Disparu</span>';
-      mailBtn = `<button class="btn-mail" data-vendor="${vendor}" data-prev="${countLast}" data-curr="0" data-pct="disparu">&#9993;&#65039;</button>`;
+      mailBtn = `<button class="btn-mail" data-vendor="${vendor}" data-prev="${maxEver}" data-curr="0" data-pct="disparu">&#9993;&#65039;</button>`;
     } else if (countToday !== null && countLast !== null && countLast !== 0) {
       const pct = ((countToday - countLast) / countLast * 100).toFixed(1);
       const sign = pct > 0 ? '+' : '';
@@ -332,8 +335,11 @@ document.getElementById('btnCount').addEventListener('click', async () => {
       for (const { vendor, count, ok } of results) {
         if (!vendor || !ok) continue;
         const prev = prevCounts[vendor];
-        if (count === 0 && prev > 0) {
-          alertLines.push({ text: `⚠️ ${vendor} — DISPARU (était ${prev})`, disparu: true });
+        const allDates = vendors[vendor] || {};
+        const everHadProducts = Object.values(allDates).some(v => v > 0);
+        const maxEver = everHadProducts ? Math.max(...Object.values(allDates).filter(v => v > 0)) : null;
+        if (count === 0 && everHadProducts) {
+          alertLines.push({ text: `⚠️ ${vendor} — DISPARU (max connu : ${maxEver})`, disparu: true });
         } else if (prev !== null && prev > 0) {
           const pct = ((count - prev) / prev) * 100;
           if (pct <= -SEUIL) {
