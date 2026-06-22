@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Compteur Produits</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: Arial, sans-serif;
+      font-size: 13px;
+      min-width: 640px;
+      background: #f5f5f5;
+      padding: 12px;
+    }
+    h1 {
+      font-size: 15px;
+      margin-bottom: 10px;
+      color: #333;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      border-radius: 6px;
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    }
+    th {
+      background: #3a3a3a;
+      color: white;
+      padding: 8px 10px;
+      text-align: left;
+      font-size: 12px;
+    }
+    td {
+      padding: 7px 10px;
+      border-bottom: 1px solid #eee;
+      color: #333;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #fafafa; }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-weight: bold;
+      font-size: 12px;
+    }
+    .up   { background: #d4edda; color: #155724; }
+    .down { background: #f8d7da; color: #721c24; }
+    .same { background: #e2e3e5; color: #383d41; }
+    .no-data { color: #999; font-style: italic; text-align: center; padding: 16px; }
+    .btn-mail {
+      margin-left: 6px;
+      padding: 1px 7px;
+      font-size: 11px;
+      cursor: pointer;
+      background: #fd7e14;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      vertical-align: middle;
+    }
+    .btn-mail:hover { background: #e8670a; }
+    .btn-clear {
+      margin-top: 10px;
+      padding: 5px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      background: #dc3545;
+      color: white;
+      border: none;
+      border-radius: 4px;
+    }
+    .btn-clear:hover { background: #c82333; }
+    .btn-count {
+      padding: 5px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      background: #28a745;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      margin-top: 10px;
+      margin-right: 6px;
+    }
+    .btn-count:hover { background: #218838; }
+    .btn-count:disabled { background: #94d3a2; cursor: default; }
+    .btn-discover {
+      padding: 5px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      margin-top: 10px;
+      margin-right: 6px;
+    }
+    .btn-discover:hover { background: #0056b3; }
+    .btn-discover:disabled { background: #7ab8f5; cursor: default; }
+    .btn-export {
+      padding: 5px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      background: #6f42c1;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      margin-top: 10px;
+      margin-right: 6px;
+    }
+    .btn-export:hover { background: #5a32a3; }
+    #vendorCount { font-size: 11px; color: #888; margin-top: 4px; }
+    #status { font-size: 12px; color: #555; margin-top: 8px; min-height: 16px; }
+    .total-row td { background: #f0f0f0; border-top: 2px solid #ccc; }
+    #alertBox {
+      display: none;
+      margin-top: 12px;
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      border-radius: 6px;
+      padding: 10px 12px;
+    }
+    #alertBox h2 { font-size: 13px; color: #856404; margin-bottom: 6px; }
+    #alertBox ul { margin: 0; padding-left: 16px; font-size: 12px; color: #533f03; }
+    #alertBox ul li { margin-bottom: 2px; }
+    #alertBox .alert-disparu { color: #721c24; font-weight: bold; }
+
+    /* Modal mail */
+    #mailModal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    #mailModal.open { display: flex; }
+    #mailPanel {
+      background: white;
+      border-radius: 8px;
+      padding: 16px;
+      width: 520px;
+      max-height: 80vh;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+    }
+    #mailPanel h3 { font-size: 14px; color: #333; }
+    #mailText {
+      flex: 1;
+      font-family: Arial, sans-serif;
+      font-size: 12px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      padding: 10px;
+      resize: vertical;
+      min-height: 180px;
+      color: #222;
+      line-height: 1.5;
+    }
+    #mailActions { display: flex; gap: 8px; justify-content: flex-end; }
+    #btnCopyMail {
+      padding: 5px 14px;
+      background: #28a745;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    #btnCopyMail:hover { background: #218838; }
+    #btnCloseMail {
+      padding: 5px 14px;
+      background: #6c757d;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    #btnCloseMail:hover { background: #545b62; }
+  </style>
+</head>
+<body>
+  <h1>📦 Suivi Produits Vendeurs</h1>
+  <table>
+    <thead>
+      <tr>
+        <th>Vendeur</th>
+        <th>Avant-dernière exécution</th>
+        <th>Dernière exécution</th>
+        <th>Évolution</th>
+      </tr>
+    </thead>
+    <tbody id="tableBody">
+      <tr><td colspan="4" class="no-data">Aucune donnée — cliquez sur "Compter maintenant".</td></tr>
+    </tbody>
+  </table>
+  <button class="btn-discover" id="btnDiscover">🔍 Découvrir les vendeurs</button>
+  <button class="btn-count" id="btnCount">▶ Compter maintenant</button>
+  <button class="btn-export" id="btnExport">⬇ Extraire XLS</button>
+  <button class="btn-clear" id="btnClear">Effacer les données</button>
+  <div id="vendorCount"></div>
+  <div id="status"></div>
+  <div id="alertBox">
+    <h2>⚠️ Alertes dernière exécution</h2>
+    <ul id="alertList"></ul>
+  </div>
+
+  <!-- Modal génération mail -->
+  <div id="mailModal">
+    <div id="mailPanel">
+      <h3>✉️ Mail à copier</h3>
+      <textarea id="mailText" readonly></textarea>
+      <div id="mailActions">
+        <button id="btnCopyMail">📋 Copier</button>
+        <button id="btnCloseMail">Fermer</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="urls.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
